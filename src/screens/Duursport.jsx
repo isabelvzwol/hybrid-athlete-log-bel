@@ -44,7 +44,7 @@ function ZoneDistributionView(props) {
         e('div', { className: 'flex flex-col gap-2' }, counts.map(function (c) {
           var pct = total ? Math.round((c.count / total) * 100) : 0;
           return e('div', { key: c.zone.key, className: 'flex items-center gap-3' },
-            e('span', { className: 'text-xs w-24 shrink-0', style: { color: 'var(--text-secondary)' } }, c.zone.label),
+                   e('span', { className: 'text-xs w-32 shrink-0', style: { color: 'var(--text-secondary)' } }, c.zone.label),
             e('div', { className: 'flex-1 h-3 rounded-full overflow-hidden', style: { background: 'var(--bg-inset)' } },
               e('div', { style: { width: pct + '%', height: '100%', background: 'var(--' + c.zone.tone + ')' } })
             ),

@@ -59,9 +59,9 @@ function AppInner(props) {
     });
   }
 
-  function addRace(r) { setState(function (p) { return Object.assign({}, p, { races: p.races.concat([r]) }); }); track(db.dbInsertRace(userId, r)); }
-  function updateRace(r) { setState(function (p) { return Object.assign({}, p, { races: p.races.map(function (x) { return x.id === r.id ? r : x; }) }); }); track(db.dbUpdateRace(userId, r)); }
-  function deleteRace(id) { setState(function (p) { return Object.assign({}, p, { races: p.races.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteRace(id)); }
+  function sortRaces(list) { return list.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
+function addRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.concat([r])) }); }); track(db.dbInsertRace(userId, r)); }
+function updateRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.map(function (x) { return x.id === r.id ? r : x; })) }); }); track(db.dbUpdateRace(userId, r)); }
 
   function addEntry(entry) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.concat([entry]) }); }); track(db.dbInsertEntry(userId, entry)); }
   function completeEntry(id, actual) {

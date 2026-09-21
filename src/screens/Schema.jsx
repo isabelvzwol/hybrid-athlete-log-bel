@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { SegTabs } from '../components/ui.jsx';
 import { WeekBlock, AddScheduleEntryModal } from '../components/scheduling.jsx';
 import { LogTrainingModal } from '../components/scheduling.jsx';
-import { uid, getMonday, todayISO, addDays, addMonthsToMonthKey, monthKeyOf, monthLabel, formatDateShort } from '../lib/helpers.js';
+import { uid, getMonday, todayISO, addDays, addMonthsToMonthKey, monthKeyOf, monthLabel, formatDateShort, isoWeekNumber } from '../lib/helpers.js';
 var e = React.createElement;
 
 export function SchemaTab(props) {
@@ -15,8 +15,7 @@ export function SchemaTab(props) {
   var st3 = useState(null); var addFor = st3[0], setAddFor = st3[1];
 
   function labelFor(m) {
-    var found = props.state.scheduleEntries.find(function (x) { return x.date >= m && x.date <= addDays(m, 6) && x.weekLabel; });
-    return found ? found.weekLabel : ('Week van ' + formatDateShort(m));
+    return 'Week ' + isoWeekNumber(m);
   }
   function copyWeek(sourceMonday) {
     var sourceEntries = props.state.scheduleEntries.filter(function (x) { return x.date >= sourceMonday && x.date <= addDays(sourceMonday, 6); });

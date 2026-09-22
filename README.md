@@ -48,10 +48,10 @@ Deze cloud-omgeving heeft geen toegang tot jouw GitHub- of Vercel-account, dus d
 
 1. Maak een nieuwe, lege GitHub-repository aan (zonder README, .gitignore of licentie, die heeft dit project al).
 2. Voer in de projectmap uit:
-   ```
+```
    git remote add origin <url-van-je-nieuwe-repo>
    git push -u origin main
-   ```
+```
    (Er staat al een eerste commit klaar, zie hieronder.)
 3. Ga naar vercel.com, klik op Add New > Project, en kies de zojuist gepushte GitHub-repository. Vercel herkent het Vite-project automatisch.
 4. Zet bij Environment Variables in Vercel dezelfde twee variabelen als in `.env.local`:
@@ -60,6 +60,26 @@ Deze cloud-omgeving heeft geen toegang tot jouw GitHub- of Vercel-account, dus d
 5. Klik op Deploy. Vanaf nu deployt Vercel automatisch bij elke push naar GitHub.
 
 Test daarna op je telefoon en je laptop met hetzelfde account, dan zie je dat de data synchroniseert.
+
+### Stap 6: automatische wekelijkse backup instellen (optioneel, maar aanbevolen)
+
+Naast de handmatige "Backup downloaden" knop in Instellingen draait er, zodra je dit instelt, elke maandagochtend automatisch een backup die je hele database als JSON-bijlage naar je mail stuurt. Dat gebeurt via een GitHub Action (`.github/workflows/weekly-backup.yml`), dus het werkt ook als je de app zelf een tijd niet opent.
+
+Je hebt hiervoor vijf "secrets" nodig in je GitHub-repository. Een secret is een gevoelige waarde die GitHub versleuteld bewaart en die alleen de workflow tijdens het draaien mag gebruiken, jij en anderen kunnen hem daarna niet meer terugzien.
+
+1. Ga in je GitHub-repository naar Settings > Secrets and variables > Actions, en klik steeds op New repository secret voor elk van de volgende vijf:
+
+   - `SUPABASE_URL`: `https://iwvtwbyfudaefecwiwta.supabase.co` (dezelfde als in `.env.local`).
+   - `SUPABASE_SERVICE_ROLE_KEY`: te vinden in het Supabase Dashboard bij Project Settings > API, onder "Project API keys" > `service_role`. Let op: deze sleutel omzeilt alle beveiliging (RLS), deel hem met niemand en zet hem alleen hier neer, nooit in de app zelf of in `.env.local`.
+   - `SUPABASE_USER_ID`: het UUID van jouw account. Te vinden bij Authentication > Users in het Supabase Dashboard, klik op je gebruiker en kopieer het "User UID" veld.
+   - `RESEND_API_KEY`: een gratis account op resend.com geeft je 3.000 gratis e-mails per maand, ruim genoeg voor één per week. Na het aanmaken van een account ga je naar API Keys > Create API Key en kopieer je de sleutel.
+   - `BACKUP_TO_EMAIL`: het e-mailadres waar de backup naartoe moet, bijvoorbeeld `isabel@tiny.nl`.
+
+2. Test de instelling meteen, zonder een week te wachten: ga naar de Actions-tab van je repository, kies "Wekelijkse backup" in de lijst links, en klik op Run workflow. Na ongeveer een halve minuut zie je of hij is geslaagd (groen vinkje) of mislukt (rood kruisje, met de foutmelding in de logs).
+
+3. Vanaf nu draait hij vanzelf elke maandag rond 08:00 uur.
+
+Herstellen vanuit zo'n backup-mail is geen knop in de app (bewust: het bestand bevat de ruwe databasetabellen, niet het app-formaat van de "Backup importeren"-knop), maar kan altijd: stuur het JSON-bestand naar Claude met de vraag om het terug te zetten in Supabase.
 
 ### Projectstructuur
 

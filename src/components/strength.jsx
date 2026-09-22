@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Modal, TextInput } from './ui.jsx';
 import { SimpleLineChart } from './charts.jsx';
-import { formatDateShort, formatDuration } from '../lib/helpers.js';
+import { formatDateShort, formatDuration, num } from '../lib/helpers.js';
 var e = React.createElement;
 
 export function strengthLastLog(strengthLogs, name) {
@@ -30,6 +30,38 @@ export function strengthLastSets(strengthLogs, name) {
   var ex = logs[0].exercises.find(function (x) { return x.name === name; });
   if (!ex || !ex.sets.length) return null;
   return ex.sets.map(function (s) { return { reps: s.reps != null ? '' + s.reps : '', weight: s.weight != null ? '' + s.weight : '' }; });
+}
+
+/* Geeft het hoogst ooit gelogde gewicht voor deze oefening terug (over alle
+   sessies heen), zodat ExerciseRow dit kan tonen als "beste: X" en een
+   nieuwe set die dit gewicht verbetert automatisch als PR gemarkeerd kan
+   worden. Alleen krachttraining, want voor hardlopen/Hyrox bestaat al een
+   eigen PR-systeem (zie PRs.jsx / lib/domain.js). */
+export function strengthBestWeight(strengthLogs, name) {
+  var best = null;
+  strengthLogs.forEach(function (l) {
+    var ex = l.exercises.find(function (x) { return x.name === name; });
+    if (!ex) return;
+    ex.sets.forEach(function (s) { if (s.weight != null && (best == null || s.weight > best)) best = s.weight; });
+  });
+  return best;
+}
+
+/* Voor elk gewicht dat ooit bij deze oefening gelogd is: het hoogste aantal
+   herhalingen dat daarbij ooit gehaald is. Zo telt een nieuwe set ook als PR
+   wanneer het gewicht hetzelfde blijft maar er meer herhalingen dan ooit
+   worden gehaald (niet alleen bij een hoger gewicht dan ooit). */
+export function strengthBestRepsPerWeight(strengthLogs, name) {
+  var map = {};
+  strengthLogs.forEach(function (l) {
+    var ex = l.exercises.find(function (x) { return x.name === name; });
+    if (!ex) return;
+    ex.sets.forEach(function (s) {
+      if (s.weight == null || s.reps == null) return;
+      if (map[s.weight] == null || s.reps > map[s.weight]) map[s.weight] = s.reps;
+    });
+  });
+  return map;
 }
 
 /* Groepeert een lijst oefeningen ({name, linkToNext}) in supersets: elke
@@ -83,11 +115,23 @@ export function ExerciseRow(props) {
   }, [sets]);
   useEffect(function () { return function () { clearTimerInterval(); }; }, []);
 
+  var best = props.best != null ? props.best : null;
+  var bestRepsPerWeight = props.bestReps || {};
+  var isPR = sets.some(function (s) {
+    var w = num(s.weight), r = num(s.reps);
+    if (w == null) return false;
+    if (best != null && w > best) return true; // zwaarder dan ooit
+    if (r != null && bestRepsPerWeight[w] != null && r > bestRepsPerWeight[w]) return true; // meer herhalingen dan ooit bij dit gewicht
+    return false;
+  });
+
   return e(Card, { className: 'p-3.5' },
     e('div', { className: 'flex items-center justify-between mb-2' },
       e('span', { className: 'text-sm font-semibold' }, ex),
       e('div', { className: 'flex items-center gap-2' },
+        isPR ? e('span', { className: 'text-xs font-semibold', style: { color: 'var(--amber)' } }, '🏆 Nieuwe PR!') : null,
         last ? e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'vorige: ' + last) : null,
+        best != null ? e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'beste: ' + best + ' kg') : null,
         props.onShowChart ? e('button', { onClick: props.onShowChart, className: 'text-sm', style: { color: 'var(--slate)' } }, '📈') : null,
         props.onToggleLink ? e('button', { onClick: props.onToggleLink, title: 'Superset met volgende oefening', className: 'text-sm', style: { color: props.linked ? 'var(--amber)' : 'var(--slate)' } }, '🔗') : null,
         props.onMoveUp ? e('button', { onClick: props.onMoveUp, className: 'text-sm', style: { color: 'var(--slate)' } }, '▲') : null,

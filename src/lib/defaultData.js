@@ -160,13 +160,14 @@ export function defaultState() {
     enduranceLogs: [],
     moodLogs: [],
     complaintLogs: [],
+    bodyWeightLogs: [],
     triathlonChecklist: defaultTriathlonChecklist()
   };
 }
 export function emptyState() {
   return {
     races: [], scheduleEntries: [], strengthLogs: [], strengthTemplates: [], hyroxLibrary: [], hyroxLogs: [],
-    hyroxRaceResults: [], runRaceResults: [], enduranceLogs: [], moodLogs: [], complaintLogs: [],
+    hyroxRaceResults: [], runRaceResults: [], enduranceLogs: [], moodLogs: [], complaintLogs: [], bodyWeightLogs: [],
     triathlonChecklist: { t1: [], t2: [], raceday: [] }
   };
 }

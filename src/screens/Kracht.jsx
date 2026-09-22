@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Field, TextInput, Button, Card, Modal, KebabMenu } from '../components/ui.jsx';
 import { HRZoneBadge } from '../components/charts.jsx';
-import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, groupBySuperset, SupersetGroup } from '../components/strength.jsx';
+import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, strengthBestWeight, strengthBestRepsPerWeight, groupBySuperset, SupersetGroup } from '../components/strength.jsx';
 import { uid, todayISO, num, formatDateShort } from '../lib/helpers.js';
 import { WARMUP_TYPES } from '../lib/constants.js';
 var e = React.createElement;
@@ -100,6 +100,8 @@ export function KrachtTab(props) {
 
   function lastLogFor(name) { return strengthLastLog(props.state.strengthLogs, name); }
   function lastSetsFor(name) { return strengthLastSets(props.state.strengthLogs, name); }
+  function bestWeightFor(name) { return strengthBestWeight(props.state.strengthLogs, name); }
+  function bestRepsFor(name) { return strengthBestRepsPerWeight(props.state.strengthLogs, name); }
   function saveWorkout() {
     var list = [];
     sessionExercises.forEach(function (item) {
@@ -144,7 +146,7 @@ export function KrachtTab(props) {
         var rows = group.map(function (item) {
           var idx = flatIdx; flatIdx++;
           return e(ExerciseRow, {
-            key: currentTemplate ? currentTemplate.id + '-' + item.name : item.name, exercise: item.name, lastLog: lastLogFor(item.name), sets: lastSetsFor(item.name),
+            key: currentTemplate ? currentTemplate.id + '-' + item.name : item.name, exercise: item.name, lastLog: lastLogFor(item.name), sets: lastSetsFor(item.name), best: bestWeightFor(item.name), bestReps: bestRepsFor(item.name),
             onChange: function (ex, data) { sessionRef.current[ex] = data; }, onRemove: function () { removeExercise(item.name); },
             onMoveUp: idx > 0 ? function () { moveExercise(idx, -1); } : null, onMoveDown: idx < sessionExercises.length - 1 ? function () { moveExercise(idx, 1); } : null,
             onToggleLink: idx < sessionExercises.length - 1 ? function () { toggleLink(idx); } : null, linked: sessionExercises[idx] && sessionExercises[idx].linkToNext,

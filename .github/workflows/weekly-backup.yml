@@ -1,0 +1,32 @@
+name: Wekelijkse backup
+
+on:
+  schedule:
+    # Elke maandag 06:00 UTC (~08:00 NL-tijd in de winter, 08:00 zomertijd is
+    # UTC+2 dus dan komt de mail rond 08:00-09:00 aan).
+    - cron: '0 6 * * 1'
+  # Handmatig te starten via de "Actions" tab in GitHub, handig om de setup
+  # te testen zonder een week te hoeven wachten.
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installeer supabase-js
+        run: npm install @supabase/supabase-js@2.45.4
+
+      - name: Backup ophalen en mailen
+        run: node scripts/weekly-backup.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_USER_ID: ${{ secrets.SUPABASE_USER_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          BACKUP_TO_EMAIL: ${{ secrets.BACKUP_TO_EMAIL }}

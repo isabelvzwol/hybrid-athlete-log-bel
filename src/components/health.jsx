@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Card, Badge, Button, TextInput } from './ui.jsx';
 import { SimpleLineChart, SimpleBarChart } from './charts.jsx';
-import { uid, num, todayISO, formatDateShort, monthKeyOf, monthLabel } from '../lib/helpers.js';
+import { uid, num, todayISO, formatDateShort, monthKeyOf, monthLabel, getMonday, addDays, isoWeekNumber } from '../lib/helpers.js';
 var e = React.createElement;
 
 /* Eén gecombineerd overzicht van alle klachten samen (niet per type
@@ -36,6 +36,53 @@ export function ComplaintTrend(props) {
       e('div', { className: 'text-xs mb-2', style: { color: 'var(--text-tertiary)' } }, 'Gemiddelde pijnscore per maand'),
       e(SimpleLineChart, { points: painPoints, color: 'var(--danger)' })
     )
+  );
+}
+
+/* Stemming (ingevuld op Home) als gestapelde weekbalk over de laatste 10
+   weken: per week het aantal groene/oranje/rode dagen, gestapeld i.p.v.
+   gemiddeld tot één cijfer. Zo blijft zichtbaar of een week bijvoorbeeld
+   een mix van goede en slechte dagen was, in plaats van dat te verhullen
+   achter één gemiddelde. */
+export function MoodTrend(props) {
+  var logs = props.moodLogs || [];
+  if (!logs.length) return null;
+  var weeksCount = 10;
+  var mondayThisWeek = getMonday(todayISO());
+  var weeks = [];
+  for (var i = weeksCount - 1; i >= 0; i--) {
+    var monday = addDays(mondayThisWeek, -7 * i);
+    var sunday = addDays(monday, 6);
+    var counts = { green: 0, orange: 0, red: 0 };
+    logs.filter(function (m) { return m.date >= monday && m.date <= sunday; }).forEach(function (m) { if (counts[m.mood] != null) counts[m.mood]++; });
+    weeks.push({ label: '' + isoWeekNumber(monday), counts: counts });
+  }
+  if (!weeks.some(function (w) { return w.counts.green || w.counts.orange || w.counts.red; })) return null;
+  var h = 90;
+  var pxPerDay = h / 7;
+  return e(Card, { className: 'p-4' },
+    e('div', { className: 'text-sm font-semibold mb-3' }, 'Stemming per week'),
+    e('div', { className: 'flex items-end gap-1.5', style: { height: h + 'px' } },
+      weeks.map(function (w, i) {
+        var segs = [
+          { key: 'red', color: 'var(--danger)', count: w.counts.red },
+          { key: 'orange', color: 'var(--amber)', count: w.counts.orange },
+          { key: 'green', color: 'var(--sage)', count: w.counts.green }
+        ];
+        return e('div', { key: i, className: 'flex-1 flex flex-col items-center gap-1' },
+          e('div', { className: 'w-full flex flex-col justify-end', style: { height: h + 'px' } },
+            segs.map(function (s) { return s.count ? e('div', { key: s.key, style: { width: '100%', height: (s.count * pxPerDay) + 'px', background: s.color, borderRadius: '2px' } }) : null; })
+          ),
+          e('div', { className: 'text-[9px]', style: { color: 'var(--text-tertiary)' } }, w.label)
+        );
+      })
+    ),
+    e('div', { className: 'flex items-center gap-3 mt-3' },
+      e('div', { className: 'flex items-center gap-1 text-[10px]', style: { color: 'var(--text-tertiary)' } }, e('span', { style: { width: '8px', height: '8px', background: 'var(--sage)', borderRadius: '2px', display: 'inline-block' } }), '🟢 goed'),
+      e('div', { className: 'flex items-center gap-1 text-[10px]', style: { color: 'var(--text-tertiary)' } }, e('span', { style: { width: '8px', height: '8px', background: 'var(--amber)', borderRadius: '2px', display: 'inline-block' } }), '🟠 matig'),
+      e('div', { className: 'flex items-center gap-1 text-[10px]', style: { color: 'var(--text-tertiary)' } }, e('span', { style: { width: '8px', height: '8px', background: 'var(--danger)', borderRadius: '2px', display: 'inline-block' } }), '🔴 niet goed')
+    ),
+    e('p', { className: 'text-[10px] mt-2', style: { color: 'var(--text-tertiary)' } }, 'Balkjes tellen op tot maximaal 7 dagen per week, een lager balkje betekent dat er die week minder vaak stemming is ingevuld.')
   );
 }
 

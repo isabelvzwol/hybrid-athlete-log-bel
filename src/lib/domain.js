@@ -315,3 +315,4 @@ export function summarizeSportEntries(entries) {
   var hasDuration = entries.filter(function (en) { return en.timeSec; });
   var totalHours = hasDuration.reduce(function (s, en) { return s + (en.timeSec / 3600); }, 0);
   return { totalsBySport: totalsBySport, totalTrainings: entries.length, kmSwim: kmSwim, kmRun: kmRun, kmBike: kmBike, totalHours: totalHours };
+}

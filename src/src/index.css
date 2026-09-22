@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+  --bg-app:#17181A; --bg-card:#212226; --bg-elevated:#2B2D32; --bg-inset:#1C1D20;
+  --border:#35373C; --border-soft:#2A2C30;
+  --text-primary:#F5F4F0; --text-secondary:#AFAFB4; --text-tertiary:#82828A;
+  --sage:#8FA888; --sage-bg:rgba(143,168,136,0.24); --sage-strong:#A9C1A2; --sage-vivid:#6FA05F;
+  --amber:#D9A15B; --amber-bg:rgba(217,161,91,0.24); --amber-vivid:#D9A15B;
+  --slate:#8CA3B8; --slate-bg:rgba(140,163,184,0.24); --slate-vivid:#5C89A8;
+  --teal:#7FB8B0; --teal-bg:rgba(127,184,176,0.26); --teal-vivid:#3E9C90;
+  --coral:#D98872; --coral-bg:rgba(217,136,114,0.26); --coral-vivid:#D9704F;
+  --danger:#C97B7B; --danger-bg:rgba(201,123,123,0.14);
+  --font-display:'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-body:'Manrope', system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ color-scheme: dark; } }
+:root[data-theme="dark"]{ color-scheme: dark; }
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ background:var(--bg-app); color:var(--text-primary); font-family:var(--font-body); margin:0; overscroll-behavior-y:none; }
+#root{ min-height:100vh; }
+::-webkit-scrollbar{ width:0; height:0; }
+input,select,textarea,button{ font-family:inherit; color:inherit; }
+input::placeholder, textarea::placeholder{ color:var(--text-tertiary); }
+input,select,textarea{ background:var(--bg-inset); border:1px solid var(--border); color:var(--text-primary); border-radius:10px; padding:9px 11px; font-size:14px; outline:none; width:100%; }
+input:focus,select:focus,textarea:focus{ border-color:var(--slate); }
+.font-display{ font-family:var(--font-display); }
+.scrollbar-none{ -ms-overflow-style:none; scrollbar-width:none; }
+.scrollbar-none::-webkit-scrollbar{ display:none; }
+.fade-in{ animation:fadeIn .18s ease-out; }
+@keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+.sheet-in{ animation:sheetIn .22s cubic-bezier(.2,.7,.3,1); }
+@keyframes sheetIn{ from{transform:translateY(24px); opacity:.4;} to{transform:translateY(0); opacity:1;} }
+a{ text-decoration:none; color:inherit; }

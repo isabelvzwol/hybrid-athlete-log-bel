@@ -48,6 +48,7 @@ var TABLES = [
   'endurance_logs',
   'mood_logs',
   'complaint_logs',
+  'body_weight_logs',
   'triathlon_checklist_items',
 ];
 

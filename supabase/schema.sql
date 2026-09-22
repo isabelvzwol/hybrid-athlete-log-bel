@@ -62,6 +62,8 @@ create table if not exists public.strength_logs (
   template text,
   exercises jsonb not null default '[]'::jsonb,
   hr integer,
+  warmup_type text,
+  warmup_minutes integer,
   created_at timestamptz not null default now()
 );
 alter table public.strength_logs enable row level security;
@@ -69,6 +71,23 @@ create policy "strength_logs_select_own" on public.strength_logs for select usin
 create policy "strength_logs_insert_own" on public.strength_logs for insert with check (user_id = auth.uid());
 create policy "strength_logs_update_own" on public.strength_logs for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "strength_logs_delete_own" on public.strength_logs for delete using (user_id = auth.uid());
+
+-- ---------- strength_templates ----------
+-- Krachtschema's (bv. "Leg day", "Upper" en eigen schema's). "exercises" is
+-- een jsonb-array van { name, linkToNext } - linkToNext geeft supersets aan.
+create table if not exists public.strength_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  exercises jsonb not null default '[]'::jsonb,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.strength_templates enable row level security;
+create policy "strength_templates_select_own" on public.strength_templates for select using (user_id = auth.uid());
+create policy "strength_templates_insert_own" on public.strength_templates for insert with check (user_id = auth.uid());
+create policy "strength_templates_update_own" on public.strength_templates for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "strength_templates_delete_own" on public.strength_templates for delete using (user_id = auth.uid());
 
 -- ---------- hyrox_library ----------
 create table if not exists public.hyrox_library (
@@ -197,3 +216,10 @@ create policy "triathlon_checklist_items_select_own" on public.triathlon_checkli
 create policy "triathlon_checklist_items_insert_own" on public.triathlon_checklist_items for insert with check (user_id = auth.uid());
 create policy "triathlon_checklist_items_update_own" on public.triathlon_checklist_items for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "triathlon_checklist_items_delete_own" on public.triathlon_checklist_items for delete using (user_id = auth.uid());
+
+-- ---------- rechten voor de "authenticated" rol ----------
+-- Zonder dit krijgt PostgREST 403-fouten op elke query, ook als RLS hierboven
+-- correct staat: RLS bepaalt WELKE rijen je mag zien/wijzigen, maar de rol
+-- moet sowieso al toestemming hebben om de tabel uberhaupt te benaderen.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;

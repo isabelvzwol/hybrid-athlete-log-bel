@@ -4,11 +4,11 @@
 import React, { useState } from 'react';
 import { Card, Badge, Button, Field, TextInput, Modal, KebabMenu, ConfirmInline } from './ui.jsx';
 import { HRZoneBadge } from './charts.jsx';
-import { ExerciseRow, StrengthChartModal, strengthLastLog } from './strength.jsx';
+import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, groupBySuperset, SupersetGroup } from './strength.jsx';
 import { WorkoutBlocks } from './hyroxShared.jsx';
 import { computePreview } from '../lib/domain.js';
 import { uid, num, addDays, formatDateShort, getMonday, todayISO, WEEKDAYS_FULL, toDate, parseDuration, formatDuration } from '../lib/helpers.js';
-import { SPORT_ICON, SPORT_OPTIONS, STRENGTH_TEMPLATES } from '../lib/constants.js';
+import { SPORT_ICON, SPORT_OPTIONS, WARMUP_TYPES } from '../lib/constants.js';
 var e = React.createElement;
 
 export function DayCard(props) {
@@ -114,18 +114,21 @@ export function LogTrainingModal(props) {
   var isWielrennen = entry.sport === 'Wielrennen / Kickr';
   var isHardlopen = entry.sport === 'Hardlopen';
   var isHyrox = entry.sport === 'Hyrox';
-  var krachtTemplate = isKracht ? STRENGTH_TEMPLATES[entry.type] : null;
+  var krachtTemplate = isKracht ? (props.strengthTemplates || []).find(function (t) { return t.name === entry.type; }) : null;
   var a = entry.actual || {};
   var stHyroxWorkout = useState(a.workoutId || ''); var hyroxWorkoutId = stHyroxWorkout[0], setHyroxWorkoutId = stHyroxWorkout[1];
   var stEditingPlan = useState(false); var editingPlan = stEditingPlan[0], setEditingPlan = stEditingPlan[1];
   var stMoving = useState(false); var movingDate = stMoving[0], setMovingDate = stMoving[1];
   var stMoveDate = useState(entry.date); var moveDate = stMoveDate[0], setMoveDate = stMoveDate[1];
   var stChartEx = useState(null); var chartExercise = stChartEx[0], setChartExercise = stChartEx[1];
-  var stKrachtEx = useState(krachtTemplate ? krachtTemplate.slice() : []); var krachtExercises = stKrachtEx[0], setKrachtExercises = stKrachtEx[1];
+  var stKrachtEx = useState(krachtTemplate ? krachtTemplate.exercises.slice() : []); var krachtExercises = stKrachtEx[0], setKrachtExercises = stKrachtEx[1];
   var stKrachtNew = useState(''); var krachtNewEx = stKrachtNew[0], setKrachtNewEx = stKrachtNew[1];
+  var stWarmupType = useState(''); var warmupType = stWarmupType[0], setWarmupType = stWarmupType[1];
+  var stWarmupMin = useState(''); var warmupMinutes = stWarmupMin[0], setWarmupMinutes = stWarmupMin[1];
   var krachtSessionRef = React.useRef({});
-  function removeKrachtExercise(name) { setKrachtExercises(function (p) { return p.filter(function (x) { return x !== name; }); }); }
+  function removeKrachtExercise(name) { setKrachtExercises(function (p) { return p.filter(function (x) { return x.name !== name; }); }); }
   function moveKrachtExercise(idx, dir) { setKrachtExercises(function (p) { var n = p.slice(); var j = idx + dir; if (j < 0 || j >= n.length) return p; var tmp = n[idx]; n[idx] = n[j]; n[j] = tmp; return n; }); }
+  function toggleKrachtLink(idx) { setKrachtExercises(function (p) { var n = p.slice(); n[idx] = Object.assign({}, n[idx], { linkToNext: !n[idx].linkToNext }); return n; }); }
   var st = useState({
     distance: a.distance != null ? a.distance : (entry.distance != null ? entry.distance : ''),
     time: a.time || '',
@@ -157,12 +160,13 @@ export function LogTrainingModal(props) {
     } else if (isKracht) {
       if (krachtTemplate) {
         var list = [];
-        krachtExercises.forEach(function (name) {
+        krachtExercises.forEach(function (item) {
+          var name = item.name;
           var data = krachtSessionRef.current[name] || { sets: [], note: '' };
           var sets = (data.sets || []).filter(function (s) { return s.reps !== '' || s.weight !== ''; }).map(function (s) { return { reps: num(s.reps) || 0, weight: num(s.weight) || 0 }; });
           if (sets.length) list.push({ name: name, sets: sets, note: data.note || '' });
         });
-        if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr) });
+        if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null });
       }
       actual = { note: f.note, hr: num(f.hr) };
     } else if (isHyrox) {
@@ -210,14 +214,35 @@ export function LogTrainingModal(props) {
     e('p', { className: 'text-xs mb-4', style: { color: 'var(--text-tertiary)' } }, entry.plannedText || 'Geen omschrijving'),
     isKracht && krachtTemplate ? e('div', { className: 'flex flex-col gap-3' },
       e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Dit wordt ook opgeslagen bij Krachttraining.'),
-      krachtExercises.map(function (name, idx) {
-        return e(ExerciseRow, { key: name, exercise: name, lastLog: strengthLastLog(props.strengthLogs, name), onChange: function (ex, data) { krachtSessionRef.current[ex] = data; }, onRemove: function () { removeKrachtExercise(name); },
-          onMoveUp: idx > 0 ? function () { moveKrachtExercise(idx, -1); } : null, onMoveDown: idx < krachtExercises.length - 1 ? function () { moveKrachtExercise(idx, 1); } : null,
-          onShowChart: function () { setChartExercise(name); } });
-      }),
+      (function () {
+        var groups = groupBySuperset(krachtExercises);
+        var flatIdx = 0;
+        return groups.map(function (group, gi) {
+          var rows = group.map(function (item) {
+            var idx = flatIdx; flatIdx++;
+            return e(ExerciseRow, {
+              key: item.name, exercise: item.name, lastLog: strengthLastLog(props.strengthLogs, item.name), sets: strengthLastSets(props.strengthLogs, item.name),
+              onChange: function (ex, data) { krachtSessionRef.current[ex] = data; }, onRemove: function () { removeKrachtExercise(item.name); },
+              onMoveUp: idx > 0 ? function () { moveKrachtExercise(idx, -1); } : null, onMoveDown: idx < krachtExercises.length - 1 ? function () { moveKrachtExercise(idx, 1); } : null,
+              onToggleLink: idx < krachtExercises.length - 1 ? function () { toggleKrachtLink(idx); } : null, linked: krachtExercises[idx] && krachtExercises[idx].linkToNext,
+              onShowChart: function () { setChartExercise(item.name); }
+            });
+          });
+          return e(SupersetGroup, { key: gi }, rows);
+        });
+      })(),
       e('div', { className: 'flex gap-2' },
         e(TextInput, { placeholder: 'Nieuwe oefening', value: krachtNewEx, onChange: function (ev) { setKrachtNewEx(ev.target.value); } }),
-        e(Button, { variant: 'ghost', onClick: function () { if (!krachtNewEx.trim()) return; setKrachtExercises(function (p) { return p.concat([krachtNewEx.trim()]); }); setKrachtNewEx(''); } }, '+ Toevoegen')
+        e(Button, { variant: 'ghost', onClick: function () { if (!krachtNewEx.trim()) return; setKrachtExercises(function (p) { return p.concat([{ name: krachtNewEx.trim(), linkToNext: false }]); }); setKrachtNewEx(''); } }, '+ Toevoegen')
+      ),
+      e(Card, { className: 'p-3.5' },
+        e('div', { className: 'text-sm font-semibold mb-2' }, '🚴 Warming-up (optioneel)'),
+        e('div', { className: 'grid grid-cols-2 gap-3' },
+          e(Field, { label: 'Type' }, e('select', { value: warmupType, onChange: function (ev) { setWarmupType(ev.target.value); } },
+            [e('option', { key: '', value: '' }, 'Geen')].concat(WARMUP_TYPES.map(function (w) { return e('option', { key: w, value: w }, w); }))
+          )),
+          e(Field, { label: 'Duur (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
+        )
       ),
       e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
       f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,

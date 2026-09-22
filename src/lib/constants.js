@@ -12,11 +12,18 @@ export var NAV = [
   { key: 'prs', label: 'PRs', icon: '🏆' }
 ];
 
-export var STRENGTH_TEMPLATES = {
-  'Leg day': ['Hip thrust', 'Lying leg curl', 'Bulgarian split squat', 'Back extensions', 'Leg raises', 'Calf raises', 'Walking lunges 3x20m'],
-  'Upper': ['Lat pulldown', 'Single arm DB row', 'Incline DB press', 'DB shoulder press', 'Lateral raises', 'Single arm triceps pushdown'],
-  'Full Body': ['Deadlift', 'Front squat', 'Pull-up', 'Push press', 'Farmers carry', 'Plank (seconden)']
-};
+/* Startpunt waarmee elk account zijn "strength_templates" gevuld krijgt
+   (zie db.js -> seedDefaultStrengthTemplates). Vanaf dat moment leven de
+   schema's in de database (tabel strength_templates) en zijn ze in de
+   Kracht-tab zelf te hernoemen/aan te passen/verwijderen - deze array is dus
+   alleen nog het eenmalige startpunt, niet meer de bron tijdens gebruik. */
+export var DEFAULT_STRENGTH_TEMPLATES = [
+  { name: 'Leg day', exercises: ['Hip thrust', 'Lying leg curl', 'Bulgarian split squat', 'Back extensions', 'Leg raises', 'Calf raises', 'Walking lunges 3x20m'] },
+  { name: 'Upper', exercises: ['Lat pulldown', 'Single arm DB row', 'Incline DB press', 'DB shoulder press', 'Lateral raises', 'Single arm triceps pushdown'] },
+  { name: 'Full Body', exercises: ['Deadlift', 'Front squat', 'Pull-up', 'Push press', 'Farmers carry', 'Plank (seconden)'] }
+];
+
+export var WARMUP_TYPES = ['Fietsen', 'Wandelen'];
 
 export var HR_ZONES = [
   { key: 'Z1', label: 'Z1 Herstel (<130)', min: 0, max: 130, tone: 'slate' },

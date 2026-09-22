@@ -19,6 +19,34 @@ export function strengthLastLog(strengthLogs, name) {
   return txt;
 }
 
+/* Geeft de sets (reps/gewicht) van de laatste keer dat deze oefening gelogd
+   werd terug als invulbare waarden, zodat de inputvelden er automatisch mee
+   gevuld kunnen worden (in plaats van dat je alleen de tekst "vorige: ..."
+   erboven ziet staan). */
+export function strengthLastSets(strengthLogs, name) {
+  var logs = strengthLogs.filter(function (l) { return l.exercises.some(function (x) { return x.name === name; }); });
+  if (!logs.length) return null;
+  logs.sort(function (a, b) { return b.date.localeCompare(a.date); });
+  var ex = logs[0].exercises.find(function (x) { return x.name === name; });
+  if (!ex || !ex.sets.length) return null;
+  return ex.sets.map(function (s) { return { reps: s.reps != null ? '' + s.reps : '', weight: s.weight != null ? '' + s.weight : '' }; });
+}
+
+/* Groepeert een lijst oefeningen ({name, linkToNext}) in supersets: elke
+   opeenvolgende reeks waarbij linkToNext=true wordt één groep, zodat die
+   samen (als "Superset") getoond kunnen worden. */
+export function groupBySuperset(list) {
+  var groups = [];
+  var i = 0;
+  while (i < list.length) {
+    var group = [list[i]];
+    while (list[i].linkToNext && i + 1 < list.length) { i++; group.push(list[i]); }
+    groups.push(group);
+    i++;
+  }
+  return groups;
+}
+
 export function ExerciseRow(props) {
   var ex = props.exercise;
   var last = props.lastLog;
@@ -61,6 +89,7 @@ export function ExerciseRow(props) {
       e('div', { className: 'flex items-center gap-2' },
         last ? e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'vorige: ' + last) : null,
         props.onShowChart ? e('button', { onClick: props.onShowChart, className: 'text-sm', style: { color: 'var(--slate)' } }, '📈') : null,
+        props.onToggleLink ? e('button', { onClick: props.onToggleLink, title: 'Superset met volgende oefening', className: 'text-sm', style: { color: props.linked ? 'var(--amber)' : 'var(--slate)' } }, '🔗') : null,
         props.onMoveUp ? e('button', { onClick: props.onMoveUp, className: 'text-sm', style: { color: 'var(--slate)' } }, '▲') : null,
         props.onMoveDown ? e('button', { onClick: props.onMoveDown, className: 'text-sm', style: { color: 'var(--slate)' } }, '▼') : null,
         props.onRemove ? e('button', { onClick: props.onRemove, className: 'text-xs', style: { color: 'var(--danger)' } }, '✕') : null
@@ -88,6 +117,14 @@ export function ExerciseRow(props) {
       ),
       e(TextInput, { placeholder: 'Notitie (bv. standinstelling machine)', value: note, onChange: function (ev) { setNote(ev.target.value); } })
     )
+  );
+}
+
+export function SupersetGroup(props) {
+  if (props.children.length < 2) return props.children[0];
+  return e('div', { className: 'rounded-2xl p-2 flex flex-col gap-2', style: { border: '1.5px dashed var(--amber)' } },
+    e('div', { className: 'text-xs font-semibold px-1', style: { color: 'var(--amber)' } }, '🔗 Superset'),
+    props.children
   );
 }
 

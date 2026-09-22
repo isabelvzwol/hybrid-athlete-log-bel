@@ -10,7 +10,7 @@ import { supabase } from './lib/supabaseClient.js';
 import * as db from './lib/db.js';
 import { emptyState, defaultState, mkEntry } from './lib/defaultData.js';
 import { uid, todayISO } from './lib/helpers.js';
-import { NAV } from './lib/constants.js';
+import { NAV, DEFAULT_STRENGTH_TEMPLATES } from './lib/constants.js';
 import { Home } from './screens/Home.jsx';
 import { SchemaTab } from './screens/Schema.jsx';
 import { KrachtTab } from './screens/Kracht.jsx';
@@ -43,6 +43,24 @@ function AppInner(props) {
       setHasNoData(isEmpty);
       setLoading(false);
       setDbError(false);
+      if (!rest.strengthTemplates || rest.strengthTemplates.length === 0) {
+        // Eenmalig (per account): de 3 standaardschema's als rijen aanmaken,
+        // zodat ze net als voorheen meteen beschikbaar zijn, maar nu ook
+        // hernoembaar/aanpasbaar/verwijderbaar zijn via de Kracht-tab. Als de
+        // SQL-migratie nog niet is uitgevoerd (tabel bestaat nog niet) faalt
+        // dit gewoon stil - de rest van de app blijft intussen bruikbaar en
+        // de schema's verschijnen bij de eerstvolgende herlaad-poging.
+        db.seedDefaultStrengthTemplates(userId, DEFAULT_STRENGTH_TEMPLATES).then(function () {
+          return db.fetchAllData(userId);
+        }).then(function (data2) {
+          var rest2 = Object.assign({}, data2);
+          delete rest2.isEmpty;
+          setState(rest2);
+        }).catch(function (err) {
+          // eslint-disable-next-line no-console
+          console.error('Standaardschema\'s aanmaken is (nog) niet gelukt:', err);
+        });
+      }
     });
   }
   useEffect(function () {
@@ -60,9 +78,9 @@ function AppInner(props) {
   }
 
   function sortRaces(list) { return list.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
-   function addRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.concat([r])) }); }); track(db.dbInsertRace(userId, r)); }
-   function updateRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.map(function (x) { return x.id === r.id ? r : x; })) }); }); track(db.dbUpdateRace(userId, r)); }
-   function deleteRace(id) { setState(function (p) { return Object.assign({}, p, { races: p.races.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteRace(id)); }
+  function addRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.concat([r])) }); }); track(db.dbInsertRace(userId, r)); }
+  function updateRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.map(function (x) { return x.id === r.id ? r : x; })) }); }); track(db.dbUpdateRace(userId, r)); }
+  function deleteRace(id) { setState(function (p) { return Object.assign({}, p, { races: p.races.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteRace(id)); }
 
   function addEntry(entry) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.concat([entry]) }); }); track(db.dbInsertEntry(userId, entry)); }
   function completeEntry(id, actual) {
@@ -83,6 +101,13 @@ function AppInner(props) {
   function deleteEntry(id) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteEntry(id)); }
 
   function addStrengthLog(log) { setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.concat([log]) }); }); track(db.dbInsertStrengthLog(userId, log)); }
+  function addStrengthTemplate(t) { setState(function (p) { return Object.assign({}, p, { strengthTemplates: p.strengthTemplates.concat([t]) }); }); track(db.dbInsertStrengthTemplate(userId, t)); }
+  function updateStrengthTemplate(patch) {
+    var merged = null;
+    setState(function (p) { return Object.assign({}, p, { strengthTemplates: p.strengthTemplates.map(function (t) { if (t.id === patch.id) { merged = Object.assign({}, t, patch); return merged; } return t; }) }); });
+    if (merged) track(db.dbUpdateStrengthTemplate(userId, merged));
+  }
+  function deleteStrengthTemplate(id) { setState(function (p) { return Object.assign({}, p, { strengthTemplates: p.strengthTemplates.filter(function (t) { return t.id !== id; }) }); }); track(db.dbDeleteStrengthTemplate(id)); }
   function addHyroxLog(log) { setState(function (p) { return Object.assign({}, p, { hyroxLogs: p.hyroxLogs.concat([log]) }); }); track(db.dbInsertHyroxLog(userId, log)); }
   function logHyroxSession(log) {
     track(db.dbInsertHyroxLog(userId, log));
@@ -221,7 +246,7 @@ function AppInner(props) {
   var content;
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, addComplaint: addComplaint, deleteComplaint: deleteComplaint, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog });
-  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog });
+  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
   else if (tab === 'prs') content = e(PRTab, { state: state, addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs });
@@ -253,7 +278,7 @@ function AppInner(props) {
       onGoTo: function (kind) { setSearchOpen(false); setTab(kind === 'strength' ? 'kracht' : kind === 'hyrox' || kind === 'hyroxLib' ? 'hyrox' : kind === 'endurance' ? 'duursport' : 'home'); } }) : null,
     searchLogEntry ? e(LogTrainingModal, { entry: searchLogEntry, onClose: function () { setSearchLogEntry(null); },
       onSave: function (id, actual) { completeEntry(id, actual); setSearchLogEntry(null); },
-      onUncomplete: uncompleteEntry, onUpdateEntry: updateEntry, onDeleteEntry: deleteEntry, strengthLogs: state.strengthLogs, onSaveStrengthLog: addStrengthLog, hyroxLibrary: state.hyroxLibrary, onSaveHyroxLog: addHyroxLog }) : null,
+      onUncomplete: uncompleteEntry, onUpdateEntry: updateEntry, onDeleteEntry: deleteEntry, strengthLogs: state.strengthLogs, strengthTemplates: state.strengthTemplates, onSaveStrengthLog: addStrengthLog, hyroxLibrary: state.hyroxLibrary, onSaveHyroxLog: addHyroxLog }) : null,
     recapOpen ? e(AnnualRecapModal, { state: state, onClose: function () { setRecapOpen(false); } }) : null
   );
 }

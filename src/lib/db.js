@@ -77,14 +77,55 @@ export async function dbDeleteEntry(id) {
 
 /* ---------- strength_logs ---------- */
 function strengthLogFromRow(row) {
-  return { id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr };
+  return {
+    id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr,
+    warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes
+  };
 }
 function strengthLogToRow(log, userId) {
-  return { id: log.id, user_id: userId, date: log.date, template: log.template || null, exercises: log.exercises || [], hr: log.hr };
+  return {
+    id: log.id, user_id: userId, date: log.date, template: log.template || null, exercises: log.exercises || [], hr: log.hr,
+    warmup_type: log.warmupType || null, warmup_minutes: log.warmupMinutes != null ? log.warmupMinutes : null
+  };
 }
 export async function dbInsertStrengthLog(userId, log) {
   var { error } = await supabase.from('strength_logs').insert(strengthLogToRow(log, userId));
   assertNoError('krachttraining opslaan', error);
+}
+
+/* ---------- strength_templates ----------
+   Elk krachtschema (ingebouwd of zelf aangemaakt) is hier één rij; "exercises"
+   is een jsonb-array van { name, linkToNext } - linkToNext geeft aan dat deze
+   oefening samen met de volgende als superset getoond moet worden. */
+function templateExercisesFromRow(exercises) {
+  return (exercises || []).map(function (x) {
+    return typeof x === 'string' ? { name: x, linkToNext: false } : { name: x.name, linkToNext: !!x.linkToNext };
+  });
+}
+function templateFromRow(row) {
+  return { id: row.id, name: row.name, exercises: templateExercisesFromRow(row.exercises), sortOrder: row.sort_order || 0 };
+}
+function templateToRow(t, userId) {
+  return { id: t.id, user_id: userId, name: t.name, exercises: t.exercises || [], sort_order: t.sortOrder || 0 };
+}
+export async function dbInsertStrengthTemplate(userId, t) {
+  var { error } = await supabase.from('strength_templates').insert(templateToRow(t, userId));
+  assertNoError('schema toevoegen', error);
+}
+export async function dbUpdateStrengthTemplate(userId, t) {
+  var { error } = await supabase.from('strength_templates').update(templateToRow(t, userId)).eq('id', t.id);
+  assertNoError('schema bijwerken', error);
+}
+export async function dbDeleteStrengthTemplate(id) {
+  var { error } = await supabase.from('strength_templates').delete().eq('id', id);
+  assertNoError('schema verwijderen', error);
+}
+export async function seedDefaultStrengthTemplates(userId, defaults) {
+  var rows = defaults.map(function (t, idx) {
+    return templateToRow({ id: uid(), name: t.name, exercises: t.exercises.map(function (name) { return { name: name, linkToNext: false }; }), sortOrder: idx }, userId);
+  });
+  var { error } = await supabase.from('strength_templates').insert(rows);
+  assertNoError('standaardschema\'s aanmaken', error);
 }
 
 /* ---------- hyrox_library ---------- */
@@ -247,12 +288,27 @@ export async function fetchAllData(userId) {
   ]);
   results.forEach(function (r) { assertNoError('data ophalen', r.error); });
 
+  // Los van de rest opgehaald en met een eigen vangnet: als de SQL-migratie
+  // voor "strength_templates" nog niet is uitgevoerd (tabel bestaat nog
+  // niet), mag dat de rest van de app niet blokkeren - dan laden we gewoon
+  // verder met een lege lijst schema's i.p.v. dat de hele app vastloopt.
+  var strengthTemplatesRows = [];
+  try {
+    var stRes = await supabase.from('strength_templates').select('*').eq('user_id', userId).order('sort_order', { ascending: true });
+    if (stRes.error) throw stRes.error;
+    strengthTemplatesRows = stRes.data;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Supabase-fout bij krachtschema\'s ophalen (mogelijk migratie nog niet uitgevoerd):', err);
+  }
+
   var [races, entries, strength, hyroxLib, hyroxLogs, hyroxRace, runRace, endurance, mood, complaints, checklist] = results;
 
   return {
     races: races.data.map(raceFromRow),
     scheduleEntries: entries.data.map(entryFromRow),
     strengthLogs: strength.data.map(strengthLogFromRow),
+    strengthTemplates: strengthTemplatesRows.map(templateFromRow),
     hyroxLibrary: hyroxLib.data.map(hyroxWorkoutFromRow),
     hyroxLogs: hyroxLogs.data.map(hyroxLogFromRow),
     hyroxRaceResults: hyroxRace.data.map(hyroxRaceResultFromRow),
@@ -297,6 +353,7 @@ export async function importBackupToSupabase(userId, data) {
   if (data.races) await replaceTable('races', data.races.map(function (r) { return raceToRow(Object.assign({ id: r.id || uid() }, r), userId); }));
   if (data.scheduleEntries) await replaceTable('schedule_entries', data.scheduleEntries.map(function (x) { return entryToRow(Object.assign({ id: x.id || uid() }, x), userId); }));
   if (data.strengthLogs) await replaceTable('strength_logs', data.strengthLogs.map(function (l) { return strengthLogToRow(Object.assign({ id: l.id || uid() }, l), userId); }));
+  if (data.strengthTemplates) await replaceTable('strength_templates', data.strengthTemplates.map(function (t) { return templateToRow(Object.assign({ id: t.id || uid() }, t), userId); }));
   if (data.hyroxLibrary) await replaceTable('hyrox_library', data.hyroxLibrary.map(function (w) { return hyroxWorkoutToRow(Object.assign({ id: w.id || uid() }, w), userId); }));
   if (data.hyroxLogs) await replaceTable('hyrox_logs', data.hyroxLogs.map(function (l) { return hyroxLogToRow(Object.assign({ id: l.id || uid() }, l), userId); }));
   if (data.hyroxRaceResults) await replaceTable('hyrox_race_results', data.hyroxRaceResults.map(function (r) { return hyroxRaceResultToRow(Object.assign({ id: r.id || uid() }, r), userId); }));

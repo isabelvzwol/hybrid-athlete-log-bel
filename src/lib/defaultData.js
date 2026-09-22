@@ -152,6 +152,7 @@ export function defaultState() {
     races: defaultRaces(),
     scheduleEntries: defaultScheduleEntries(),
     strengthLogs: [],
+    strengthTemplates: [],
     hyroxLibrary: defaultHyroxLibrary(),
     hyroxLogs: [],
     hyroxRaceResults: defaultHyroxRaceResults(),
@@ -164,7 +165,7 @@ export function defaultState() {
 }
 export function emptyState() {
   return {
-    races: [], scheduleEntries: [], strengthLogs: [], hyroxLibrary: [], hyroxLogs: [],
+    races: [], scheduleEntries: [], strengthLogs: [], strengthTemplates: [], hyroxLibrary: [], hyroxLogs: [],
     hyroxRaceResults: [], runRaceResults: [], enduranceLogs: [], moodLogs: [], complaintLogs: [],
     triathlonChecklist: { t1: [], t2: [], raceday: [] }
   };

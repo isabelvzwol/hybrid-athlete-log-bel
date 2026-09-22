@@ -343,7 +343,7 @@ export function Home(props) {
       e(RaceForm, { onSave: function (f) { props.addRace(Object.assign({ id: uid(), pacingScenarios: null, mealPlan: { days: [] }, result: null }, f)); setAddRace(false); } })) : null,
     logEntry ? e(LogTrainingModal, { entry: logEntry, onClose: function () { setLogEntry(null); },
       onSave: function (id, actual) { props.completeEntry(id, actual); setLogEntry(null); },
-      onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, strengthLogs: s.strengthLogs, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: s.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
+      onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, strengthLogs: s.strengthLogs, strengthTemplates: s.strengthTemplates, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: s.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
     addToday ? e(AddScheduleEntryModal, { defaultDate: todayISO(), onClose: function () { setAddToday(false); }, onAdd: function (entry) { props.addEntry(entry); setAddToday(false); } }) : null
   );
 }

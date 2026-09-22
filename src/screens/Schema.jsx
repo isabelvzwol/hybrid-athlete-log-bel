@@ -45,7 +45,7 @@ export function SchemaTab(props) {
     view === 'week' ? e(WeekBlock, { monday: monday, weekLabel: labelFor(monday), entries: props.state.scheduleEntries, onOpenEntry: setOpenEntry, onAddFor: setAddFor }) :
       monthMondays.map(function (m) { return e(WeekBlock, { key: m, monday: m, weekLabel: labelFor(m), entries: props.state.scheduleEntries, onOpenEntry: setOpenEntry, onAddFor: setAddFor }); }),
     openEntry ? e(LogTrainingModal, { entry: openEntry, onClose: function () { setOpenEntry(null); },
-      onSave: function (id, actual) { props.completeEntry(id, actual); setOpenEntry(null); }, onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, strengthLogs: props.state.strengthLogs, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: props.state.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
+      onSave: function (id, actual) { props.completeEntry(id, actual); setOpenEntry(null); }, onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, strengthLogs: props.state.strengthLogs, strengthTemplates: props.state.strengthTemplates, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: props.state.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
     addFor ? e(AddScheduleEntryModal, { defaultDate: addFor, onClose: function () { setAddFor(null); }, onAdd: function (entry) { props.addEntry(entry); setAddFor(null); } }) : null
   );
 }

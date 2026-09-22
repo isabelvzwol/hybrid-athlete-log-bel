@@ -5,7 +5,7 @@ import { Card, Badge, Button, TextInput, SegTabs, ConfirmInline } from '../compo
 import { SimpleLineChart, HRZoneBadge } from '../components/charts.jsx';
 import { enduranceArchiveItems, hrSamplesForSport, allHrSamples } from '../lib/domain.js';
 import { HR_ZONES, HR_SPORTS, hrZone, SPORT_ICON } from '../lib/constants.js';
-import { getMonday, todayISO, addDays, monthKeyOf, yearOf, avgOf, formatDateWithYear, formatDateShort, formatDuration } from '../lib/helpers.js';
+import { getMonday, todayISO, addDays, monthKeyOf, yearOf, avgOf, formatDateWithYear, formatDateShort, formatDuration, isoWeekNumber } from '../lib/helpers.js';
 var e = React.createElement;
 
 function ZoneDistributionView(props) {
@@ -104,6 +104,37 @@ function EnduranceArchiveList(props) {
     );
   }));
 }
+/* Tempo/snelheid per sessie loopt flink uiteen (rustige duurloop vs.
+   tempotraining), dus bij een langere periode (Maand/Jaar/Alles) wordt hier
+   per week gemiddeld i.p.v. elke losse sessie te plotten — dat middelt de
+   ruis van verschillende trainingstypes uit en laat de echte trend zien.
+   Bij periode Week blijft elke sessie los zichtbaar, want dan is dat juist
+   relevant. Het weekgemiddelde is afstand-gewogen (totale tijd/totale km),
+   niet het gemiddelde van de losse tempo's, dat is eerlijker als de
+   sessieduur per training verschilt. */
+function paceSeriesFor(sport, chronological, period) {
+  function valueOf(it) {
+    if (sport === 'Wielrennen / Kickr') return it.distance / (it.timeSec / 3600);
+    if (sport === 'Zwemmen') return (it.timeSec / it.distance) * 100;
+    return it.timeSec / it.distance;
+  }
+  if (period === 'Week') {
+    return chronological.map(function (it) { return { label: formatDateShort(it.date).split(' ')[0], value: valueOf(it) }; });
+  }
+  var byWeek = {};
+  chronological.forEach(function (it) {
+    var wk = getMonday(it.date);
+    if (!byWeek[wk]) byWeek[wk] = { distSum: 0, timeSum: 0 };
+    byWeek[wk].distSum += it.distance;
+    byWeek[wk].timeSum += it.timeSec;
+  });
+  var weeks = Object.keys(byWeek).sort();
+  return weeks.map(function (wk) {
+    var w = byWeek[wk];
+    var value = sport === 'Wielrennen / Kickr' ? (w.distSum / (w.timeSum / 3600)) : (sport === 'Zwemmen' ? (w.timeSum / w.distSum) * 100 : (w.timeSum / w.distSum));
+    return { label: '' + isoWeekNumber(wk), value: value };
+  });
+}
 function ChecklistSection(props) {
   var st = useState(''); var newText = st[0], setNewText = st[1];
   var doneCount = props.items.filter(function (i) { return i.checked; }).length;
@@ -153,12 +184,17 @@ export function DuursportTab(props) {
 
   var chartData = null;
   var chronological = items.slice().sort(function (a, b) { return a.date.localeCompare(b.date); }).filter(function (it) { return it.distance && it.timeSec; });
-  if (sport === 'Hardlopen' && chronological.length >= 2) {
-    chartData = { title: 'Tempo-trend (min/km)', note: 'Lager = sneller', points: chronological.map(function (it) { return { label: formatDateShort(it.date).split(' ')[0], value: it.timeSec / it.distance }; }) };
-  } else if (sport === 'Zwemmen' && chronological.length >= 2) {
-    chartData = { title: 'Tempo-trend (per 100m)', note: 'Lager = sneller', points: chronological.map(function (it) { return { label: formatDateShort(it.date).split(' ')[0], value: (it.timeSec / it.distance) * 100 }; }) };
-  } else if (sport === 'Wielrennen / Kickr' && chronological.length >= 2) {
-    chartData = { title: 'Snelheid-trend (km/h)', note: null, points: chronological.map(function (it) { return { label: formatDateShort(it.date).split(' ')[0], value: it.distance / (it.timeSec / 3600) }; }) };
+  if (chronological.length >= 2 && (sport === 'Hardlopen' || sport === 'Zwemmen' || sport === 'Wielrennen / Kickr')) {
+    var pacePoints = paceSeriesFor(sport, chronological, period);
+    if (pacePoints.length >= 2) {
+      var perWeek = period !== 'Week';
+      var titleBySport = {
+        'Hardlopen': perWeek ? 'Gemiddeld tempo per week (min/km)' : 'Tempo-trend (min/km)',
+        'Zwemmen': perWeek ? 'Gemiddeld tempo per week (per 100m)' : 'Tempo-trend (per 100m)',
+        'Wielrennen / Kickr': perWeek ? 'Gemiddelde snelheid per week (km/h)' : 'Snelheid-trend (km/h)'
+      };
+      chartData = { title: titleBySport[sport], note: sport === 'Wielrennen / Kickr' ? null : 'Lager = sneller', points: pacePoints };
+    }
   }
   return e('div', { className: 'flex flex-col gap-4' },
     e('h2', { className: 'font-display text-xl font-semibold text-center' }, 'Duursport'),

@@ -5,9 +5,39 @@
    (bv. slaap) is bewust in dit bestand, niet in Home.jsx. */
 import React, { useState } from 'react';
 import { Card, Badge, Button, TextInput } from './ui.jsx';
-import { SimpleLineChart } from './charts.jsx';
-import { uid, num, todayISO, formatDateShort } from '../lib/helpers.js';
+import { SimpleLineChart, SimpleBarChart } from './charts.jsx';
+import { uid, num, todayISO, formatDateShort, monthKeyOf, monthLabel } from '../lib/helpers.js';
 var e = React.createElement;
+
+/* Eén gecombineerd overzicht van alle klachten samen (niet per type
+   uitgesplitst): aantal meldingen per maand en de gemiddelde pijnscore per
+   maand, over de laatste 6 maanden met data. */
+export function ComplaintTrend(props) {
+  var logs = props.complaintLogs || [];
+  if (!logs.length) return null;
+  var byMonth = {};
+  logs.forEach(function (c) {
+    var mk = monthKeyOf(c.date);
+    if (!byMonth[mk]) byMonth[mk] = { count: 0, painSum: 0 };
+    byMonth[mk].count += 1;
+    byMonth[mk].painSum += (c.pain || 0);
+  });
+  var months = Object.keys(byMonth).sort().slice(-6);
+  if (!months.length) return null;
+  var countBars = months.map(function (mk) { return { label: monthLabel(mk).slice(0, 3), value: byMonth[mk].count }; });
+  var painPoints = months.map(function (mk) { return { label: monthLabel(mk).slice(0, 3), value: byMonth[mk].painSum / byMonth[mk].count }; });
+  return e(Card, { className: 'p-4 flex flex-col gap-4' },
+    e('div', { className: 'text-sm font-semibold' }, 'Trend van klachten'),
+    e('div', {},
+      e('div', { className: 'text-xs mb-2', style: { color: 'var(--text-tertiary)' } }, 'Aantal klachten per maand'),
+      e(SimpleBarChart, { bars: countBars })
+    ),
+    e('div', {},
+      e('div', { className: 'text-xs mb-2', style: { color: 'var(--text-tertiary)' } }, 'Gemiddelde pijnscore per maand'),
+      e(SimpleLineChart, { points: painPoints, color: 'var(--danger)' })
+    )
+  );
+}
 
 export function ComplaintTracker(props) {
   var st = useState({ type: '', pain: '5' }); var f = st[0], setF = st[1];

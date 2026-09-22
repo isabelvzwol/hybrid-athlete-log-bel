@@ -17,6 +17,7 @@ import { KrachtTab } from './screens/Kracht.jsx';
 import { HyroxTab } from './screens/Hyrox.jsx';
 import { DuursportTab } from './screens/Duursport.jsx';
 import { PRTab } from './screens/PRs.jsx';
+import { GezondheidTab } from './screens/Gezondheid.jsx';
 import { SearchModal, SettingsModal, AnnualRecapModal } from './screens/SearchAndSettings.jsx';
 import { LogTrainingModal } from './components/scheduling.jsx';
 var e = React.createElement;
@@ -153,6 +154,17 @@ function AppInner(props) {
   }
   function addComplaint(c) { setState(function (p) { return Object.assign({}, p, { complaintLogs: p.complaintLogs.concat([c]) }); }); track(db.dbInsertComplaint(userId, c)); }
   function deleteComplaint(id) { setState(function (p) { return Object.assign({}, p, { complaintLogs: p.complaintLogs.filter(function (c) { return c.id !== id; }) }); }); track(db.dbDeleteComplaint(id)); }
+  function saveBodyWeight(date, weightKg) {
+    setState(function (p) {
+      var exists = p.bodyWeightLogs.some(function (b) { return b.date === date; });
+      var logs = exists
+        ? p.bodyWeightLogs.map(function (b) { return b.date === date ? Object.assign({}, b, { weightKg: weightKg }) : b; })
+        : p.bodyWeightLogs.concat([{ id: uid(), date: date, weightKg: weightKg }]);
+      return Object.assign({}, p, { bodyWeightLogs: logs });
+    });
+    track(db.dbUpsertBodyWeight(userId, date, weightKg));
+  }
+  function deleteBodyWeight(id) { setState(function (p) { return Object.assign({}, p, { bodyWeightLogs: p.bodyWeightLogs.filter(function (b) { return b.id !== id; }) }); }); track(db.dbDeleteBodyWeight(id)); }
   function updateRunRaceResult(id, patch) {
     var merged = null;
     setState(function (p) { return Object.assign({}, p, { runRaceResults: p.runRaceResults.map(function (r) { if (r.id === id) { merged = Object.assign({}, r, patch); return merged; } return r; }) }); });
@@ -244,12 +256,13 @@ function AppInner(props) {
   }
 
   var content;
-  if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, addComplaint: addComplaint, deleteComplaint: deleteComplaint, onOpenRecap: function () { setRecapOpen(true); } });
+  if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog });
   else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
   else if (tab === 'prs') content = e(PRTab, { state: state, addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs });
+  else if (tab === 'gezondheid') content = e(GezondheidTab, { state: state, addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight });
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
     dbError ? e('div', { className: 'sticky top-0 z-50 px-4 py-2.5 text-center text-xs font-semibold', style: { background: 'var(--danger)', color: '#2A0E0E' } },

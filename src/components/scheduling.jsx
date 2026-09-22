@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { Card, Badge, Button, Field, TextInput, Modal, KebabMenu, ConfirmInline } from './ui.jsx';
 import { HRZoneBadge } from './charts.jsx';
-import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, groupBySuperset, SupersetGroup } from './strength.jsx';
+import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, strengthBestWeight, strengthBestRepsPerWeight, groupBySuperset, SupersetGroup } from './strength.jsx';
 import { WorkoutBlocks } from './hyroxShared.jsx';
 import { computePreview } from '../lib/domain.js';
 import { uid, num, addDays, formatDateShort, getMonday, todayISO, WEEKDAYS_FULL, toDate, parseDuration, formatDuration } from '../lib/helpers.js';
@@ -221,7 +221,7 @@ export function LogTrainingModal(props) {
           var rows = group.map(function (item) {
             var idx = flatIdx; flatIdx++;
             return e(ExerciseRow, {
-              key: item.name, exercise: item.name, lastLog: strengthLastLog(props.strengthLogs, item.name), sets: strengthLastSets(props.strengthLogs, item.name),
+              key: item.name, exercise: item.name, lastLog: strengthLastLog(props.strengthLogs, item.name), sets: strengthLastSets(props.strengthLogs, item.name), best: strengthBestWeight(props.strengthLogs, item.name), bestReps: strengthBestRepsPerWeight(props.strengthLogs, item.name),
               onChange: function (ex, data) { krachtSessionRef.current[ex] = data; }, onRemove: function () { removeKrachtExercise(item.name); },
               onMoveUp: idx > 0 ? function () { moveKrachtExercise(idx, -1); } : null, onMoveDown: idx < krachtExercises.length - 1 ? function () { moveKrachtExercise(idx, 1); } : null,
               onToggleLink: idx < krachtExercises.length - 1 ? function () { toggleKrachtLink(idx); } : null, linked: krachtExercises[idx] && krachtExercises[idx].linkToNext,

@@ -1,4 +1,3 @@
-
 /* ---------------- Supabase datalaag ----------------
    Deze module is de vervanging van loadState()/saveState() (localStorage) uit
    de originele app. Elke tabel komt exact overeen met het schema in
@@ -232,6 +231,23 @@ export async function dbDeleteComplaint(id) {
   assertNoError('klacht verwijderen', error);
 }
 
+/* ---------- body_weight_logs ----------
+   Eén rij per dag per gebruiker (unieke index op user_id+date) - upsert dus,
+   net als bij mood_logs, zodat een dubbele meting op dezelfde dag de vorige
+   overschrijft in plaats van een tweede rij aan te maken. */
+function bodyWeightFromRow(row) { return { id: row.id, date: row.date, weightKg: row.weight_kg }; }
+export async function dbUpsertBodyWeight(userId, date, weightKg) {
+  var { error } = await supabase.from('body_weight_logs').upsert(
+    { user_id: userId, date: date, weight_kg: weightKg },
+    { onConflict: 'user_id,date' }
+  );
+  assertNoError('lichaamsgewicht opslaan', error);
+}
+export async function dbDeleteBodyWeight(id) {
+  var { error } = await supabase.from('body_weight_logs').delete().eq('id', id);
+  assertNoError('lichaamsgewicht verwijderen', error);
+}
+
 /* ---------- triathlon_checklist_items ---------- */
 function groupChecklistRows(rows) {
   var cl = { t1: [], t2: [], raceday: [] };
@@ -273,7 +289,44 @@ export async function dbSeedChecklistIfEmpty(userId, defaultChecklist) {
 }
 
 /* ---------- alles ophalen ---------- */
+// Los van de rest opgehaald en met een eigen vangnet: als de SQL-migratie
+// voor "strength_templates" nog niet is uitgevoerd (tabel bestaat nog niet),
+// mag dat de rest van de app niet blokkeren - dan laden we gewoon verder met
+// een lege lijst schema's i.p.v. dat de hele app vastloopt. De query wordt
+// hier al gestart (niet pas na de Promise.all hieronder afgewacht), zodat hij
+// gelijktijdig met de andere tabellen ophaalt in plaats van er sequentieel
+// achteraan te lopen.
+async function fetchStrengthTemplatesSafely(userId) {
+  try {
+    var res = await supabase.from('strength_templates').select('*').eq('user_id', userId).order('sort_order', { ascending: true });
+    if (res.error) throw res.error;
+    return res.data;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Supabase-fout bij krachtschema\'s ophalen (mogelijk migratie nog niet uitgevoerd):', err);
+    return [];
+  }
+}
+
+// Zelfde vangnet als hierboven, voor de nieuwe tabel "body_weight_logs": als
+// die migratie nog niet gedraaid is, laadt de rest van de app gewoon door
+// met een lege lijst metingen.
+async function fetchBodyWeightLogsSafely(userId) {
+  try {
+    var res = await supabase.from('body_weight_logs').select('*').eq('user_id', userId).order('date', { ascending: true });
+    if (res.error) throw res.error;
+    return res.data;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Supabase-fout bij lichaamsgewicht ophalen (mogelijk migratie nog niet uitgevoerd):', err);
+    return [];
+  }
+}
+
 export async function fetchAllData(userId) {
+  var strengthTemplatesPromise = fetchStrengthTemplatesSafely(userId);
+  var bodyWeightLogsPromise = fetchBodyWeightLogsSafely(userId);
+
   var results = await Promise.all([
     supabase.from('races').select('*').eq('user_id', userId).order('date', { ascending: true }),
     supabase.from('schedule_entries').select('*').eq('user_id', userId).order('date', { ascending: true }),
@@ -289,19 +342,8 @@ export async function fetchAllData(userId) {
   ]);
   results.forEach(function (r) { assertNoError('data ophalen', r.error); });
 
-  // Los van de rest opgehaald en met een eigen vangnet: als de SQL-migratie
-  // voor "strength_templates" nog niet is uitgevoerd (tabel bestaat nog
-  // niet), mag dat de rest van de app niet blokkeren - dan laden we gewoon
-  // verder met een lege lijst schema's i.p.v. dat de hele app vastloopt.
-  var strengthTemplatesRows = [];
-  try {
-    var stRes = await supabase.from('strength_templates').select('*').eq('user_id', userId).order('sort_order', { ascending: true });
-    if (stRes.error) throw stRes.error;
-    strengthTemplatesRows = stRes.data;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Supabase-fout bij krachtschema\'s ophalen (mogelijk migratie nog niet uitgevoerd):', err);
-  }
+  var strengthTemplatesRows = await strengthTemplatesPromise;
+  var bodyWeightLogsRows = await bodyWeightLogsPromise;
 
   var [races, entries, strength, hyroxLib, hyroxLogs, hyroxRace, runRace, endurance, mood, complaints, checklist] = results;
 
@@ -317,6 +359,7 @@ export async function fetchAllData(userId) {
     enduranceLogs: endurance.data.map(enduranceLogFromRow),
     moodLogs: mood.data.map(moodLogFromRow),
     complaintLogs: complaints.data.map(complaintFromRow),
+    bodyWeightLogs: bodyWeightLogsRows.map(bodyWeightFromRow),
     triathlonChecklist: groupChecklistRows(checklist.data),
     isEmpty: races.data.length === 0 && entries.data.length === 0 && hyroxLib.data.length === 0 && checklist.data.length === 0,
   };
@@ -362,6 +405,7 @@ export async function importBackupToSupabase(userId, data) {
   if (data.enduranceLogs) await replaceTable('endurance_logs', data.enduranceLogs.map(function (l) { return enduranceLogToRow(Object.assign({ id: l.id || uid() }, l), userId); }));
   if (data.moodLogs) await replaceTable('mood_logs', data.moodLogs.map(function (m) { return { id: m.id || uid(), user_id: userId, date: m.date, mood: m.mood }; }));
   if (data.complaintLogs) await replaceTable('complaint_logs', data.complaintLogs.map(function (c) { return complaintToRow(Object.assign({ id: c.id || uid() }, c), userId); }));
+  if (data.bodyWeightLogs) await replaceTable('body_weight_logs', data.bodyWeightLogs.map(function (b) { return { id: b.id || uid(), user_id: userId, date: b.date, weight_kg: b.weightKg }; }));
   if (data.triathlonChecklist) {
     var rows = [];
     ['t1', 't2', 'raceday'].forEach(function (section) {

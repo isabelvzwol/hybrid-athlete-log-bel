@@ -9,7 +9,8 @@ export var NAV = [
   { key: 'kracht', label: 'Kracht', icon: '🏋️' },
   { key: 'hyrox', label: 'Hyrox', icon: '⚡' },
   { key: 'duursport', label: 'Duursport', icon: '📊' },
-  { key: 'prs', label: 'PRs', icon: '🏆' }
+  { key: 'prs', label: 'PRs', icon: '🏆' },
+  { key: 'gezondheid', label: 'Gezondheid', icon: '❤️' }
 ];
 
 /* Startpunt waarmee elk account zijn "strength_templates" gevuld krijgt

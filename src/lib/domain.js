@@ -2,7 +2,7 @@
    1-op-1 overgenomen uit de originele hybrid-athlete-app.html (pure
    berekeningen, geen opslag-afhankelijke code - precies de functies die
    volgens de migratiespec ongewijzigd konden blijven). */
-import { parseDuration, formatDuration, addDays, getMonday, todayISO, daysBetween, avgOf, yearOf, isoWeekNumber, formatDateShort, formatDateWithYear } from './helpers.js';
+import { parseDuration, formatDuration, addDays, getMonday, todayISO, daysBetween, avgOf, isoWeekNumber, formatDateWithYear } from './helpers.js';
 import { hrZone, STANDARD_DISTANCES, HR_SPORTS } from './constants.js';
 
 export function computePreview(sport, f) {
@@ -135,6 +135,49 @@ function nearestOf(d) {
 }
 export function bestOf(efforts) { return efforts.reduce(function (min, x) { return (min == null || x.sec < min.sec) ? x : min; }, null); }
 
+/* Zoekt, voor elke oefening die ooit gelogd is, naar kracht-PR's van de
+   afgelopen 'days' dagen: een nieuw all-time hoogste gewicht, of hetzelfde
+   gewicht met meer herhalingen dan ooit. Zelfde principe als de PR-detectie
+   in components/strength.jsx, maar dan terugkijkend i.p.v. tijdens het
+   loggen, zodat het ook in de automatische inzichten kan verschijnen. */
+export function recentStrengthPRs(state, days) {
+  var window = days || 30;
+  var today = todayISO();
+  var names = {};
+  state.strengthLogs.forEach(function (l) { l.exercises.forEach(function (ex) { names[ex.name] = true; }); });
+  var out = [];
+  Object.keys(names).forEach(function (name) {
+    var allSets = [];
+    state.strengthLogs.forEach(function (l) {
+      var ex = l.exercises.find(function (x) { return x.name === name; });
+      if (!ex) return;
+      ex.sets.forEach(function (s) { if (s.weight != null) allSets.push({ date: l.date, weight: s.weight, reps: s.reps }); });
+    });
+    if (!allSets.length) return;
+
+    var maxWeight = allSets.reduce(function (m, s) { return Math.max(m, s.weight); }, 0);
+    var weightPRDate = allSets.filter(function (s) { return s.weight === maxWeight; }).map(function (s) { return s.date; }).sort().pop();
+    if (weightPRDate && daysBetween(weightPRDate, today) >= 0 && daysBetween(weightPRDate, today) <= window) {
+      out.push({ name: name, type: 'weight', weight: maxWeight, date: weightPRDate });
+    }
+
+    var bestByWeight = {};
+    allSets.forEach(function (s) {
+      if (s.reps == null) return;
+      var cur = bestByWeight[s.weight];
+      if (!cur || s.reps > cur.reps || (s.reps === cur.reps && s.date > cur.date)) bestByWeight[s.weight] = { reps: s.reps, date: s.date };
+    });
+    Object.keys(bestByWeight).forEach(function (w) {
+      var rec = bestByWeight[w];
+      var isSameAsWeightPR = weightPRDate === rec.date && Number(w) === maxWeight;
+      if (!isSameAsWeightPR && daysBetween(rec.date, today) >= 0 && daysBetween(rec.date, today) <= window) {
+        out.push({ name: name, type: 'reps', weight: Number(w), reps: rec.reps, date: rec.date });
+      }
+    });
+  });
+  return out;
+}
+
 export function generateInsights(state) {
   var insights = [];
   var runs = [];
@@ -184,6 +227,10 @@ export function generateInsights(state) {
     var best = bestOf(combinedRunEfforts(state, sd.km));
     if (best) { var db = daysBetween(best.date, todayISO()); if (db >= 0 && db <= 30) insights.push('Nieuwe PR op ' + sd.label + ': ' + formatDuration(best.sec, true) + ' op ' + formatDateWithYear(best.date) + '.'); }
   });
+  recentStrengthPRs(state, 30).forEach(function (pr) {
+    if (pr.type === 'weight') insights.push('Nieuwe kracht-PR bij ' + pr.name + ': ' + pr.weight + ' kg op ' + formatDateWithYear(pr.date) + '.');
+    else insights.push('Nieuwe kracht-PR bij ' + pr.name + ': ' + pr.reps + ' herhalingen op ' + pr.weight + ' kg (' + formatDateWithYear(pr.date) + ').');
+  });
   var monday = getMonday(todayISO());
   var weekMoods = state.moodLogs.filter(function (m) { return m.date >= monday && m.date <= todayISO(); });
   if (weekMoods.length >= 3) {
@@ -228,9 +275,12 @@ export function buildSearchIndex(state) {
 }
 export function kindToTab(kind) { return { strength: 'kracht', hyrox: 'hyrox', hyroxLib: 'hyrox', endurance: 'duursport', race: 'home' }[kind] || 'home'; }
 
-export function allSportEntriesForYear(state, year) {
+/* Generieke versie van allSportEntriesForYear: verzamelt alle sportsessies
+   binnen een willekeurige datumrange (i.p.v. alleen een heel jaar). Dit maakt
+   'm ook bruikbaar voor de maand- en weekvergelijking in het Jaaroverzicht. */
+export function allSportEntriesInRange(state, fromIso, toIso) {
   var out = [];
-  state.scheduleEntries.filter(function (x) { return x.completed && x.actual && yearOf(x.date) === year; }).forEach(function (x) {
+  state.scheduleEntries.filter(function (x) { return x.completed && x.actual && x.date >= fromIso && x.date <= toIso; }).forEach(function (x) {
     var a = x.actual;
     if (x.sport === 'Brick') {
       var bikeSec = parseDuration(a.bike && a.bike.time) || 0, runSec = parseDuration(a.run && a.run.time) || 0, transSec = parseDuration(a.transition) || 0;
@@ -241,11 +291,27 @@ export function allSportEntriesForYear(state, year) {
       out.push({ sport: x.sport, date: x.date, distance: a.distance != null ? a.distance : x.distance, timeSec: a.time ? parseDuration(a.time) : null });
     }
   });
-  state.enduranceLogs.filter(function (l) { return yearOf(l.date) === year; }).forEach(function (l) {
+  state.enduranceLogs.filter(function (l) { return l.date >= fromIso && l.date <= toIso; }).forEach(function (l) {
     if (l.sport === 'Brick') { out.push({ sport: 'Brick', date: l.date, distance: l.totalDistance, timeSec: l.totalTime ? parseDuration(l.totalTime) : null }); }
     else out.push({ sport: l.sport, date: l.date, distance: l.distance, timeSec: l.time ? parseDuration(l.time) : null });
   });
-  state.strengthLogs.filter(function (l) { return yearOf(l.date) === year; }).forEach(function (l) { out.push({ sport: 'Kracht', date: l.date, distance: null, timeSec: null }); });
-  state.hyroxLogs.filter(function (l) { return yearOf(l.date) === year; }).forEach(function (l) { out.push({ sport: 'Hyrox', date: l.date, distance: null, timeSec: parseDuration(l.time) }); });
+  state.strengthLogs.filter(function (l) { return l.date >= fromIso && l.date <= toIso; }).forEach(function (l) { out.push({ sport: 'Kracht', date: l.date, distance: null, timeSec: null }); });
+  state.hyroxLogs.filter(function (l) { return l.date >= fromIso && l.date <= toIso; }).forEach(function (l) { out.push({ sport: 'Hyrox', date: l.date, distance: null, timeSec: parseDuration(l.time) }); });
   return out;
 }
+export function allSportEntriesForYear(state, year) {
+  return allSportEntriesInRange(state, year + '-01-01', year + '-12-31');
+}
+
+/* Vat een lijst sportsessies (zoals allSportEntriesInRange teruggeeft) samen
+   tot de kerncijfers die zowel het jaaroverzicht als de periodevergelijking
+   (maand/week) nodig hebben. */
+export function summarizeSportEntries(entries) {
+  var totalsBySport = {};
+  entries.forEach(function (en) { totalsBySport[en.sport] = (totalsBySport[en.sport] || 0) + 1; });
+  var kmSwim = entries.filter(function (en) { return en.sport === 'Zwemmen'; }).reduce(function (s, en) { return s + ((en.distance || 0) / 1000); }, 0);
+  var kmRun = entries.filter(function (en) { return en.sport === 'Hardlopen'; }).reduce(function (s, en) { return s + (en.distance || 0); }, 0);
+  var kmBike = entries.filter(function (en) { return en.sport === 'Wielrennen / Kickr'; }).reduce(function (s, en) { return s + (en.distance || 0); }, 0);
+  var hasDuration = entries.filter(function (en) { return en.timeSec; });
+  var totalHours = hasDuration.reduce(function (s, en) { return s + (en.timeSec / 3600); }, 0);
+  return { totalsBySport: totalsBySport, totalTrainings: entries.length, kmSwim: kmSwim, kmRun: kmRun, kmBike: kmBike, totalHours: totalHours };

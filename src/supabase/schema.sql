@@ -89,6 +89,23 @@ create policy "strength_templates_insert_own" on public.strength_templates for i
 create policy "strength_templates_update_own" on public.strength_templates for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "strength_templates_delete_own" on public.strength_templates for delete using (user_id = auth.uid());
 
+-- ---------- body_weight_logs ----------
+-- Eén meting per dag per gebruiker (unique constraint), zodat de app kan
+-- upserten in plaats van dubbele metingen op dezelfde dag te laten ontstaan.
+create table if not exists public.body_weight_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  weight_kg numeric not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+alter table public.body_weight_logs enable row level security;
+create policy "body_weight_logs_select_own" on public.body_weight_logs for select using (user_id = auth.uid());
+create policy "body_weight_logs_insert_own" on public.body_weight_logs for insert with check (user_id = auth.uid());
+create policy "body_weight_logs_update_own" on public.body_weight_logs for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "body_weight_logs_delete_own" on public.body_weight_logs for delete using (user_id = auth.uid());
+
 -- ---------- hyrox_library ----------
 create table if not exists public.hyrox_library (
   id uuid primary key default gen_random_uuid(),
@@ -223,3 +240,12 @@ create policy "triathlon_checklist_items_delete_own" on public.triathlon_checkli
 -- moet sowieso al toestemming hebben om de tabel uberhaupt te benaderen.
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+
+-- ---------- rechten voor de "service_role" rol ----------
+-- Zelfde verhaal als hierboven, maar dan voor service_role: die gebruikt het
+-- wekelijkse backup-script (scripts/weekly-backup.mjs) om buiten RLS om bij
+-- alle tabellen te kunnen. BYPASSRLS (wat service_role standaard heeft)
+-- omzeilt alleen de RLS-policies, niet deze onderliggende tabelrechten, dus
+-- zonder deze grants krijgt het script "permission denied for table ...".
+grant usage on schema public to service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;

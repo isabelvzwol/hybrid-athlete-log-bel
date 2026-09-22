@@ -29,6 +29,13 @@ export function addDays(iso, n) { var d = toDate(iso); d.setDate(d.getDate() + n
 export function addMonthsToMonthKey(monthKey, n) { var p = monthKey.split('-'); var y = parseInt(p[0]), m = parseInt(p[1]) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + '-' + pad(m + 1); }
 export function monthKeyOf(iso) { return iso.slice(0, 7); }
 export function monthLabel(monthKey) { var p = monthKey.split('-'); return MONTHS[parseInt(p[1]) - 1] + ' ' + p[0]; }
+/* Geeft de eerste en laatste dag (als iso-datums) van een maand terug, voor
+   de periodevergelijking (maand-op-maand) in het Jaaroverzicht. */
+export function monthRange(monthKey) {
+  var p = monthKey.split('-'); var y = parseInt(p[0]), m = parseInt(p[1]);
+  var lastDay = new Date(y, m, 0).getDate();
+  return { start: monthKey + '-01', end: monthKey + '-' + pad(lastDay) };
+}
 export function parseDuration(str) {
   if (!str) return null;
   var parts = String(str).split(':').map(function (x) { return parseFloat(x); });

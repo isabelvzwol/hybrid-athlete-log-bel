@@ -52,36 +52,79 @@ export function enduranceArchiveItems(state, sport) {
   return out;
 }
 
+/* Geeft per sessie ook timeSec mee naast hr - nodig voor de trainingslast-
+   berekening hieronder, die uren x hartslagzone rekent. Bestaand gebruik van
+   deze functie (bv. de hartslagzone-verdeling op Duursport) kijkt alleen naar
+   .hr en merkt dus niets van deze uitbreiding. */
 export function hrSamplesForSport(state, sport) {
   var out = [];
   if (sport === 'Kracht') {
-    state.strengthLogs.forEach(function (l) { if (l.hr != null) out.push({ date: l.date, hr: l.hr }); });
-    state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr }); });
+    state.strengthLogs.forEach(function (l) { if (l.hr != null) out.push({ date: l.date, hr: l.hr, timeSec: l.durationMin != null ? l.durationMin * 60 : null }); });
+    state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr, timeSec: null }); });
     return out;
   }
   if (sport === 'Hyrox') {
-    state.hyroxLogs.forEach(function (l) { if (l.hr != null) out.push({ date: l.date, hr: l.hr }); });
+    state.hyroxLogs.forEach(function (l) { if (l.hr != null) out.push({ date: l.date, hr: l.hr, timeSec: l.time ? parseDuration(l.time) : null }); });
     return out;
   }
   if (sport === 'Brick') {
     state.scheduleEntries.filter(function (x) { return x.sport === 'Brick' && x.completed && x.actual; }).forEach(function (x) {
       var a = x.actual; var hrs = []; if (a.bike && a.bike.hr != null) hrs.push(a.bike.hr); if (a.run && a.run.hr != null) hrs.push(a.run.hr);
-      if (hrs.length) out.push({ date: x.date, hr: hrs.reduce(function (s, h) { return s + h; }, 0) / hrs.length });
+      if (hrs.length) {
+        var bikeSec = parseDuration(a.bike && a.bike.time) || 0, runSec = parseDuration(a.run && a.run.time) || 0, transSec = parseDuration(a.transition) || 0;
+        out.push({ date: x.date, hr: hrs.reduce(function (s, h) { return s + h; }, 0) / hrs.length, timeSec: (bikeSec + runSec + transSec) || null });
+      }
     });
     state.enduranceLogs.filter(function (l) { return l.sport === 'Brick'; }).forEach(function (l) {
       var hrs = []; if (l.bike && l.bike.hr != null) hrs.push(l.bike.hr); if (l.run && l.run.hr != null) hrs.push(l.run.hr);
-      if (hrs.length) out.push({ date: l.date, hr: hrs.reduce(function (s, h) { return s + h; }, 0) / hrs.length });
+      if (hrs.length) out.push({ date: l.date, hr: hrs.reduce(function (s, h) { return s + h; }, 0) / hrs.length, timeSec: l.totalTime ? parseDuration(l.totalTime) : null });
     });
     return out;
   }
-  state.scheduleEntries.filter(function (x) { return x.sport === sport && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr }); });
-  state.enduranceLogs.filter(function (l) { return l.sport === sport && l.hr != null; }).forEach(function (l) { out.push({ date: l.date, hr: l.hr }); });
+  state.scheduleEntries.filter(function (x) { return x.sport === sport && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr, timeSec: x.actual.time ? parseDuration(x.actual.time) : null }); });
+  state.enduranceLogs.filter(function (l) { return l.sport === sport && l.hr != null; }).forEach(function (l) { out.push({ date: l.date, hr: l.hr, timeSec: l.time ? parseDuration(l.time) : null }); });
   return out;
 }
 export function allHrSamples(state) {
   var out = [];
   HR_SPORTS.forEach(function (sp) { hrSamplesForSport(state, sp).forEach(function (s) { out.push(s); }); });
   return out;
+}
+
+/* Gewicht per hartslagzone (intensiteitspunten per uur) voor de
+   trainingslast-grafiek (Gezondheid-tab): Z1 = 1 t/m Z5 = 5. Een sessie telt
+   mee als uren x zone-gewicht, zodat lang+rustig en kort+heftig eerlijk
+   vergelijkbaar zijn - 3 uur op Z1 (3 x 1 = 3) weegt zo ongeveer even zwaar
+   als 45 minuten op Z4 (0,75 x 4 = 3). */
+var LOAD_ZONE_WEIGHT = { Z1: 1, Z2: 2, Z3: 3, Z4: 4, Z5: 5 };
+
+/* Trainingslast per week, per sport: telt voor elke sessie mét geregistreerde
+   hartslag én duur het aantal uren x de intensiteitspunten van die
+   hartslagzone op. Sessies zonder hartslag of zonder duur tellen niet mee
+   (zonder allebei kan de belasting niet eerlijk berekend worden), en
+   Herstel-dagen zitten niet in HR_SPORTS en horen hier dus ook niet bij. */
+export function trainingLoadByWeek(state, weeksCount) {
+  var weeks = weeksCount || 8;
+  var mondayThisWeek = getMonday(todayISO());
+  var byWeek = {};
+  var order = [];
+  for (var i = weeks - 1; i >= 0; i--) {
+    var monday = addDays(mondayThisWeek, -7 * i);
+    byWeek[monday] = {};
+    order.push(monday);
+  }
+  HR_SPORTS.forEach(function (sport) {
+    hrSamplesForSport(state, sport).forEach(function (s) {
+      if (!s.timeSec) return;
+      var monday = getMonday(s.date);
+      if (byWeek[monday] == null) return;
+      var zone = hrZone(s.hr);
+      if (!zone) return;
+      var w = (LOAD_ZONE_WEIGHT[zone.key] || 0) * (s.timeSec / 3600);
+      byWeek[monday][sport] = (byWeek[monday][sport] || 0) + w;
+    });
+  });
+  return order.map(function (monday) { return { label: '' + isoWeekNumber(monday), bySport: byWeek[monday] }; });
 }
 
 export function consecutiveTrainingDaysEndingToday(entries) {

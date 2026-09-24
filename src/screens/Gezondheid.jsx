@@ -4,7 +4,8 @@
    later nog gezondheidsmetrics aan toe te voegen. Stemming blijft bewust op
    Home staan, dat is een losse keuze geweest. */
 import React from 'react';
-import { ComplaintTracker, ComplaintTrend, BodyWeightTracker, MoodTrend } from '../components/health.jsx';
+import { ComplaintTracker, ComplaintTrend, BodyWeightTracker, MoodTrend, TrainingLoadTrend } from '../components/health.jsx';
+import { trainingLoadByWeek } from '../lib/domain.js';
 var e = React.createElement;
 
 export function GezondheidTab(props) {
@@ -13,6 +14,7 @@ export function GezondheidTab(props) {
     e(BodyWeightTracker, { bodyWeightLogs: s.bodyWeightLogs, onSave: props.saveBodyWeight, onDelete: props.deleteBodyWeight }),
     e(ComplaintTracker, { complaintLogs: s.complaintLogs, onAdd: props.addComplaint, onDelete: props.deleteComplaint }),
     e(ComplaintTrend, { complaintLogs: s.complaintLogs }),
-    e(MoodTrend, { moodLogs: s.moodLogs })
+    e(MoodTrend, { moodLogs: s.moodLogs }),
+    e(TrainingLoadTrend, { weeks: trainingLoadByWeek(s, 8) })
   );
 }

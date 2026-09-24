@@ -12,6 +12,8 @@
   --teal:#7FB8B0; --teal-bg:rgba(127,184,176,0.26); --teal-vivid:#3E9C90;
   --coral:#D98872; --coral-bg:rgba(217,136,114,0.26); --coral-vivid:#D9704F;
   --danger:#C97B7B; --danger-bg:rgba(201,123,123,0.14);
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
+  --series-5:#d55181; --series-6:#008300; --series-7:#9085e9; --series-8:#e66767;
   --font-display:'Space Grotesk', system-ui, -apple-system, sans-serif;
   --font-body:'Manrope', system-ui, -apple-system, sans-serif;
 }

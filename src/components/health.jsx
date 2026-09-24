@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Card, Badge, Button, TextInput } from './ui.jsx';
 import { SimpleLineChart, SimpleBarChart } from './charts.jsx';
 import { uid, num, todayISO, formatDateShort, monthKeyOf, monthLabel, getMonday, addDays, isoWeekNumber } from '../lib/helpers.js';
+import { SPORT_ICON } from '../lib/constants.js';
 var e = React.createElement;
 
 /* Eén gecombineerd overzicht van alle klachten samen (niet per type
@@ -83,6 +84,56 @@ export function MoodTrend(props) {
       e('div', { className: 'flex items-center gap-1 text-[10px]', style: { color: 'var(--text-tertiary)' } }, e('span', { style: { width: '8px', height: '8px', background: 'var(--danger)', borderRadius: '2px', display: 'inline-block' } }), '🔴 niet goed')
     ),
     e('p', { className: 'text-[10px] mt-2', style: { color: 'var(--text-tertiary)' } }, 'Balkjes tellen op tot maximaal 7 dagen per week, een lager balkje betekent dat er die week minder vaak stemming is ingevuld.')
+  );
+}
+
+/* Sportvormen die meetellen in de trainingsbelasting, in een vaste volgorde
+   met telkens dezelfde kleur (nooit gewisseld tussen renders - anders
+   verandert de betekenis van een kleur per week). Herstel zit hier bewust
+   niet bij: dat is rust, geen belasting. */
+var LOAD_SPORTS = ['Hardlopen', 'Wielrennen / Kickr', 'Zwemmen', 'Brick', 'Kracht', 'Hyrox', 'Voetbal', 'Overig'];
+var LOAD_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)', 'var(--series-5)', 'var(--series-6)', 'var(--series-7)', 'var(--series-8)'];
+
+/* Trainingslast per week (over alle sportvormen), als gestapelde weekbalk:
+   props.weeks komt uit domain.js -> trainingLoadByWeek en bevat per week de
+   intensiteitspunten per sport (uren x hartslagzone Z1=1 t/m Z5=5, opgeteld
+   per sessie met geregistreerde hartslag én duur). Zie de toelichting in de
+   grafiek zelf voor waarom dit geen simpele optelsom van trainingen is. */
+export function TrainingLoadTrend(props) {
+  var weeks = props.weeks || [];
+  var hasData = weeks.some(function (w) { return LOAD_SPORTS.some(function (sp) { return w.bySport[sp]; }); });
+  if (!hasData) return null;
+  var totals = weeks.map(function (w) { return LOAD_SPORTS.reduce(function (s, sp) { return s + (w.bySport[sp] || 0); }, 0); });
+  var maxTotal = Math.max.apply(null, totals.concat([1]));
+  var h = 100;
+  var usedSports = LOAD_SPORTS.filter(function (sp) { return weeks.some(function (w) { return w.bySport[sp]; }); });
+  return e(Card, { className: 'p-4' },
+    e('div', { className: 'text-sm font-semibold mb-1' }, 'Trainingslast per week'),
+    e('p', { className: 'text-[10px] mb-3', style: { color: 'var(--text-tertiary)' } }, 'Per sessie met geregistreerde hartslag én duur telt het aantal uren keer de intensiteit van die hartslagzone mee (Z1 = 1 t/m Z5 = 5 punten/uur), opgeteld per week. Zo weegt bijvoorbeeld 3 uur rustig op Z1 ongeveer even zwaar als 45 minuten pittig op Z4. Sessies zonder hartslag óf zonder duur tellen niet mee, en hersteldagen horen hier niet bij.'),
+    e('div', { className: 'flex items-end gap-1.5', style: { height: h + 'px' } },
+      weeks.map(function (w, i) {
+        return e('div', { key: i, className: 'flex-1 flex flex-col items-center gap-1' },
+          e('div', { className: 'w-full flex flex-col justify-end', style: { height: h + 'px' } },
+            LOAD_SPORTS.map(function (sp, si) {
+              var v = w.bySport[sp] || 0;
+              if (!v) return null;
+              var segH = (v / maxTotal) * h;
+              return e('div', { key: sp, style: { width: '100%', height: Math.max(segH, 1.5) + 'px', background: LOAD_COLORS[si], borderRadius: '2px' } });
+            })
+          ),
+          e('div', { className: 'text-[9px]', style: { color: 'var(--text-tertiary)' } }, w.label)
+        );
+      })
+    ),
+    e('div', { className: 'flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3' },
+      usedSports.map(function (sp) {
+        var idx = LOAD_SPORTS.indexOf(sp);
+        return e('div', { key: sp, className: 'flex items-center gap-1 text-[10px]', style: { color: 'var(--text-tertiary)' } },
+          e('span', { style: { width: '8px', height: '8px', background: LOAD_COLORS[idx], borderRadius: '2px', display: 'inline-block' } }),
+          (SPORT_ICON[sp] || '') + ' ' + sp
+        );
+      })
+    )
   );
 }
 

@@ -79,13 +79,14 @@ export async function dbDeleteEntry(id) {
 function strengthLogFromRow(row) {
   return {
     id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr,
-    warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes
+    warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes, durationMin: row.duration_minutes
   };
 }
 function strengthLogToRow(log, userId) {
   return {
     id: log.id, user_id: userId, date: log.date, template: log.template || null, exercises: log.exercises || [], hr: log.hr,
-    warmup_type: log.warmupType || null, warmup_minutes: log.warmupMinutes != null ? log.warmupMinutes : null
+    warmup_type: log.warmupType || null, warmup_minutes: log.warmupMinutes != null ? log.warmupMinutes : null,
+    duration_minutes: log.durationMin != null ? log.durationMin : null
   };
 }
 export async function dbInsertStrengthLog(userId, log) {

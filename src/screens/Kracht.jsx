@@ -32,6 +32,7 @@ export function KrachtTab(props) {
   var st5 = useState(null); var chartExercise = st5[0], setChartExercise = st5[1];
   var stWT = useState(''); var warmupType = stWT[0], setWarmupType = stWT[1];
   var stWM = useState(''); var warmupMinutes = stWM[0], setWarmupMinutes = stWM[1];
+  var stDur = useState(''); var durationMinutes = stDur[0], setDurationMinutes = stDur[1];
   var stModal = useState(null); var nameModal = stModal[0], setNameModal = stModal[1]; // null | 'create' | 'rename'
   var sessionRef = useRef({});
   var stReady = useState(!!currentTemplate); var ready = stReady[0], setReady = stReady[1];
@@ -113,12 +114,13 @@ export function KrachtTab(props) {
     if (!list.length) return;
     props.addStrengthLog({
       id: uid(), date: todayISO(), template: currentTemplate ? currentTemplate.name : '', exercises: list, hr: num(hrValue),
-      warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null
+      warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null, durationMin: num(durationMinutes)
     });
     switchTemplate(templateId);
     setHrValue('');
     setWarmupType('');
     setWarmupMinutes('');
+    setDurationMinutes('');
   }
   var recent = props.state.strengthLogs.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 5);
   var groups = groupBySuperset(sessionExercises);
@@ -169,7 +171,10 @@ export function KrachtTab(props) {
         e(Field, { label: 'Duur (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
       )
     ),
-    e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: hrValue, onChange: function (ev) { setHrValue(ev.target.value); } })),
+    e('div', { className: 'grid grid-cols-2 gap-3' },
+      e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: hrValue, onChange: function (ev) { setHrValue(ev.target.value); } })),
+      e(Field, { label: 'Duur sessie (min)' }, e(TextInput, { type: 'number', value: durationMinutes, onChange: function (ev) { setDurationMinutes(ev.target.value); } }))
+    ),
     hrValue ? e(HRZoneBadge, { hr: num(hrValue) }) : null,
     e(Button, { onClick: saveWorkout, className: 'w-full' }, 'Workout opslaan'),
     chartExercise ? e(StrengthChartModal, { name: chartExercise, strengthLogs: props.state.strengthLogs, onClose: function () { setChartExercise(null); } }) : null,

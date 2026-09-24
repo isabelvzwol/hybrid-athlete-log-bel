@@ -125,6 +125,7 @@ export function LogTrainingModal(props) {
   var stKrachtNew = useState(''); var krachtNewEx = stKrachtNew[0], setKrachtNewEx = stKrachtNew[1];
   var stWarmupType = useState(''); var warmupType = stWarmupType[0], setWarmupType = stWarmupType[1];
   var stWarmupMin = useState(''); var warmupMinutes = stWarmupMin[0], setWarmupMinutes = stWarmupMin[1];
+  var stKrachtDur = useState(''); var krachtDurationMinutes = stKrachtDur[0], setKrachtDurationMinutes = stKrachtDur[1];
   var krachtSessionRef = React.useRef({});
   function removeKrachtExercise(name) { setKrachtExercises(function (p) { return p.filter(function (x) { return x.name !== name; }); }); }
   function moveKrachtExercise(idx, dir) { setKrachtExercises(function (p) { var n = p.slice(); var j = idx + dir; if (j < 0 || j >= n.length) return p; var tmp = n[idx]; n[idx] = n[j]; n[j] = tmp; return n; }); }
@@ -166,7 +167,7 @@ export function LogTrainingModal(props) {
           var sets = (data.sets || []).filter(function (s) { return s.reps !== '' || s.weight !== ''; }).map(function (s) { return { reps: num(s.reps) || 0, weight: num(s.weight) || 0 }; });
           if (sets.length) list.push({ name: name, sets: sets, note: data.note || '' });
         });
-        if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null });
+        if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null, durationMin: num(krachtDurationMinutes) });
       }
       actual = { note: f.note, hr: num(f.hr) };
     } else if (isHyrox) {
@@ -244,7 +245,10 @@ export function LogTrainingModal(props) {
           e(Field, { label: 'Duur (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
         )
       ),
-      e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+        e(Field, { label: 'Duur sessie (min)' }, e(TextInput, { type: 'number', value: krachtDurationMinutes, onChange: function (ev) { setKrachtDurationMinutes(ev.target.value); } }))
+      ),
       f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
       e(Field, { label: 'Notitie / gevoel (algemeen)' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
     ) : isKracht ? e('div', { className: 'flex flex-col gap-3' },

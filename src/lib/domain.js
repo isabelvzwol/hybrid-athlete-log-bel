@@ -59,7 +59,14 @@ export function enduranceArchiveItems(state, sport) {
 export function hrSamplesForSport(state, sport) {
   var out = [];
   if (sport === 'Kracht') {
-    state.strengthLogs.forEach(function (l) { if (l.hr != null) out.push({ date: l.date, hr: l.hr, timeSec: l.durationMin != null ? l.durationMin * 60 : null }); });
+    /* Duur van een Kracht-sessie telt inclusief warming-up: de warming-up
+       hoort bij dezelfde sessie en heeft geen eigen hartslagmeting, dus wordt
+       hij bij de duur van de hoofd-training opgeteld i.p.v. apart gewogen. */
+    state.strengthLogs.forEach(function (l) {
+      if (l.hr == null) return;
+      var totalMin = l.durationMin != null ? l.durationMin + (l.warmupMinutes || 0) : null;
+      out.push({ date: l.date, hr: l.hr, timeSec: totalMin != null ? totalMin * 60 : null });
+    });
     state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr, timeSec: null }); });
     return out;
   }

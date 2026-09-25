@@ -109,7 +109,7 @@ export function TrainingLoadTrend(props) {
   var usedSports = LOAD_SPORTS.filter(function (sp) { return weeks.some(function (w) { return w.bySport[sp]; }); });
   return e(Card, { className: 'p-4' },
     e('div', { className: 'text-sm font-semibold mb-1' }, 'Trainingslast per week'),
-    e('p', { className: 'text-[10px] mb-3', style: { color: 'var(--text-tertiary)' } }, 'Per sessie met geregistreerde hartslag én duur telt het aantal uren keer de intensiteit van die hartslagzone mee (Z1 = 1 t/m Z5 = 5 punten/uur), opgeteld per week. Zo weegt bijvoorbeeld 3 uur rustig op Z1 ongeveer even zwaar als 45 minuten pittig op Z4. Sessies zonder hartslag óf zonder duur tellen niet mee, en hersteldagen horen hier niet bij.'),
+    e('p', { className: 'text-[10px] mb-3', style: { color: 'var(--text-tertiary)' } }, 'Per sessie met geregistreerde hartslag én duur telt het aantal uren keer de intensiteit van die hartslagzone mee (Z1 = 1 t/m Z5 = 5 punten/uur), opgeteld per week. Zo weegt bijvoorbeeld 3 uur rustig op Z1 ongeveer even zwaar als 45 minuten pittig op Z4. Sessies zonder hartslag óf zonder duur tellen niet mee, en hersteldagen horen hier niet bij. Bij Kracht telt een eventuele warming-up mee in de duur.'),
     e('div', { className: 'flex items-end gap-1.5', style: { height: h + 'px' } },
       weeks.map(function (w, i) {
         return e('div', { key: i, className: 'flex-1 flex flex-col items-center gap-1' },

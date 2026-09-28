@@ -276,6 +276,11 @@ function InsightsWidget(props) {
 export function Home(props) {
   var s = props.state;
   var todayEntries = s.scheduleEntries.filter(function (x) { return x.date === todayISO(); });
+  /* Wedstrijden verdwijnen de dag na de wedstrijd zelf uit deze lijst - op de
+     wedstrijddag staat hij nog gewoon met het label "Vandaag!", de dag erna
+     is r.date < todayISO() en valt hij eruit. Ze blijven gewoon bestaan en
+     zijn dan alleen nog te vinden via "Wedstrijdgeschiedenis bekijken". */
+  var upcomingRaces = s.races.filter(function (r) { return r.date >= todayISO(); });
   var st = useState(null); var raceModal = st[0], setRaceModal = st[1];
   var stEdit = useState(false); var raceEditMode = stEdit[0], setRaceEditMode = stEdit[1];
   var st2 = useState(false); var addRace = st2[0], setAddRace = st2[1];
@@ -290,12 +295,12 @@ export function Home(props) {
         e('span', { className: 'text-sm font-semibold' }, 'Wedstrijden'),
         e('button', { onClick: function () { setAddRace(true); }, className: 'text-xs font-medium', style: { color: 'var(--slate)' } }, '+ Race toevoegen')
       ),
-      e('div', { className: 'flex flex-col gap-2' },
-        s.races.map(function (r) { return e(RaceCard, { key: r.id, race: r,
+      upcomingRaces.length ? e('div', { className: 'flex flex-col gap-2' },
+        upcomingRaces.map(function (r) { return e(RaceCard, { key: r.id, race: r,
           onOpen: function () { setRaceModal(r); setRaceEditMode(false); },
           onEdit: function () { setRaceModal(r); setRaceEditMode(true); },
           onDelete: function () { props.deleteRace(r.id); } }); })
-      ),
+      ) : e('p', { className: 'text-sm', style: { color: 'var(--text-tertiary)' } }, 'Geen aankomende wedstrijden.'),
       e('button', { onClick: function () { setRaceHistoryOpen(true); }, className: 'text-xs font-medium mt-2', style: { color: 'var(--slate)' } }, '📜 Wedstrijdgeschiedenis bekijken')
     ),
     e('div', {},

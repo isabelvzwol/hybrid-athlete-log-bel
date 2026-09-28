@@ -27,11 +27,11 @@ export var DEFAULT_STRENGTH_TEMPLATES = [
 export var WARMUP_TYPES = ['Fietsen', 'Wandelen'];
 
 export var HR_ZONES = [
-  { key: 'Z1', label: 'Z1 Herstel (<130)', min: 0, max: 130, tone: 'slate' },
-  { key: 'Z2', label: 'Z2 Aeroob (131-146)', min: 131, max: 146, tone: 'teal' },
-  { key: 'Z3', label: 'Z3 Tempo (147-160)', min: 147, max: 160, tone: 'sage' },
-  { key: 'Z4', label: 'Z4 Drempel (161-175)', min: 161, max: 175, tone: 'amber' },
-  { key: 'Z5', label: 'Z5 VO2max (176+)', min: 176, max: 999, tone: 'danger' }
+  { key: 'Z1', label: 'Z1 Herstel (<133)', min: 0, max: 132, tone: 'slate' },
+  { key: 'Z2', label: 'Z2 Duurloop / Vetverbranding (133-150)', min: 133, max: 150, tone: 'teal' },
+  { key: 'Z3', label: 'Z3 Tempo / Marathontempo (151-166)', min: 151, max: 166, tone: 'sage' },
+  { key: 'Z4', label: 'Z4 Drempel / Threshold (167-177)', min: 167, max: 177, tone: 'amber' },
+  { key: 'Z5', label: 'Z5 Anaëroob / Maximaal (178+)', min: 178, max: 999, tone: 'danger' }
 ];
 export function hrZone(hr) {
   if (hr == null) return null;

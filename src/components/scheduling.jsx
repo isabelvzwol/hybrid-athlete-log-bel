@@ -123,9 +123,9 @@ export function LogTrainingModal(props) {
   var stChartEx = useState(null); var chartExercise = stChartEx[0], setChartExercise = stChartEx[1];
   var stKrachtEx = useState(krachtTemplate ? krachtTemplate.exercises.slice() : []); var krachtExercises = stKrachtEx[0], setKrachtExercises = stKrachtEx[1];
   var stKrachtNew = useState(''); var krachtNewEx = stKrachtNew[0], setKrachtNewEx = stKrachtNew[1];
-  var stWarmupType = useState(''); var warmupType = stWarmupType[0], setWarmupType = stWarmupType[1];
-  var stWarmupMin = useState(''); var warmupMinutes = stWarmupMin[0], setWarmupMinutes = stWarmupMin[1];
-  var stKrachtDur = useState(''); var krachtDurationMinutes = stKrachtDur[0], setKrachtDurationMinutes = stKrachtDur[1];
+  var stWarmupType = useState(a.warmupType || ''); var warmupType = stWarmupType[0], setWarmupType = stWarmupType[1];
+  var stWarmupMin = useState(a.warmupMinutes != null ? a.warmupMinutes : ''); var warmupMinutes = stWarmupMin[0], setWarmupMinutes = stWarmupMin[1];
+  var stKrachtDur = useState(a.durationMin != null ? a.durationMin : ''); var krachtDurationMinutes = stKrachtDur[0], setKrachtDurationMinutes = stKrachtDur[1];
   var krachtSessionRef = React.useRef({});
   function removeKrachtExercise(name) { setKrachtExercises(function (p) { return p.filter(function (x) { return x.name !== name; }); }); }
   function moveKrachtExercise(idx, dir) { setKrachtExercises(function (p) { var n = p.slice(); var j = idx + dir; if (j < 0 || j >= n.length) return p; var tmp = n[idx]; n[idx] = n[j]; n[j] = tmp; return n; }); }
@@ -169,7 +169,13 @@ export function LogTrainingModal(props) {
         });
         if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null, durationMin: num(krachtDurationMinutes) });
       }
-      actual = { note: f.note, hr: num(f.hr) };
+      // Duur en warming-up altijd op de training zelf bewaren (ongeacht of er
+      // sets/herhalingen zijn ingevuld): voorheen gingen deze velden alleen mee
+      // met de losse krachttraining-log hierboven, en die wordt alleen
+      // aangemaakt als er minstens 1 oefening met sets is ingevuld. Daardoor
+      // gingen duur en warming-up stilletjes verloren als je alleen hartslag,
+      // duur en warming-up invulde zonder sets te loggen.
+      actual = { note: f.note, hr: num(f.hr), durationMin: num(krachtDurationMinutes), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null };
     } else if (isHyrox) {
       if (hyroxWorkoutId && f.time) props.onSaveHyroxLog({ id: uid(), workoutId: hyroxWorkoutId, date: entry.date, time: f.time, note: f.note, hr: num(f.hr) });
       actual = { workoutId: hyroxWorkoutId, time: f.time, note: f.note, hr: num(f.hr) };

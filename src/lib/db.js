@@ -66,6 +66,16 @@ export async function dbInsertEntry(userId, entry) {
   var { error } = await supabase.from('schedule_entries').insert(entryToRow(entry, userId));
   assertNoError('training toevoegen', error);
 }
+// Haalt één training rechtstreeks op uit Supabase, op basis van het id. Dit is
+// de "vang dit op"-vangnet voor het geval de kopie die de app in het geheugen
+// heeft (bijv. na een tabwissel of een tijdje op de achtergrond staan) deze
+// training niet meer bevat: dan kan er alsnog verder worden gewerkt met de
+// actuele gegevens uit de database, in plaats van de wijziging te verliezen.
+export async function dbFetchEntry(userId, id) {
+  var { data, error } = await supabase.from('schedule_entries').select('*').eq('id', id).eq('user_id', userId).maybeSingle();
+  assertNoError('training ophalen', error);
+  return data ? entryFromRow(data) : null;
+}
 export async function dbUpdateEntry(userId, entry) {
   // .select() erbij: zonder deze toevoeging geeft Supabase ook "succes, geen
   // foutmelding" terug als er 0 rijen zijn bijgewerkt (bijv. omdat het id niet

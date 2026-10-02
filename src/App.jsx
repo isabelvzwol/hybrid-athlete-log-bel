@@ -78,6 +78,21 @@ function AppInner(props) {
     });
   }
 
+  /* Zelfde als track(), maar voor opslag-acties waarbij de app anders stilletjes
+     "gelukt" kan laten zien terwijl het opslaan in de database mislukt is (zoals
+     een training als uitgevoerd markeren). Bij een fout: zet de lokale wijziging
+     terug (rollback) EN toon een pop-up met de exacte foutmelding, zodat dit
+     nooit meer onopgemerkt blijft staan als een vinkje dat er niet hoort te zijn. */
+  function trackCritical(promise, rollback) {
+    promise.then(function () { setDbError(false); }).catch(function (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      setDbError(true);
+      if (rollback) rollback();
+      window.alert('Opslaan is niet gelukt: ' + (err && err.message ? err.message : 'onbekende fout') + '\n\nDe wijziging is daarom ook op je scherm weer teruggezet.');
+    });
+  }
+
   function sortRaces(list) { return list.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
   function addRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.concat([r])) }); }); track(db.dbInsertRace(userId, r)); }
   function updateRace(r) { setState(function (p) { return Object.assign({}, p, { races: sortRaces(p.races.map(function (x) { return x.id === r.id ? r : x; })) }); }); track(db.dbUpdateRace(userId, r)); }
@@ -85,19 +100,25 @@ function AppInner(props) {
 
   function addEntry(entry) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.concat([entry]) }); }); track(db.dbInsertEntry(userId, entry)); }
   function completeEntry(id, actual) {
-    var merged = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { merged = Object.assign({}, x, { completed: true, actual: actual }); return merged; } return x; }) }); });
-    if (merged) track(db.dbUpdateEntry(userId, merged));
+    var merged = null, previous = null;
+    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, { completed: true, actual: actual }); return merged; } return x; }) }); });
+    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
+      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
+    });
   }
   function uncompleteEntry(id) {
-    var merged = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { merged = Object.assign({}, x, { completed: false, actual: null }); return merged; } return x; }) }); });
-    if (merged) track(db.dbUpdateEntry(userId, merged));
+    var merged = null, previous = null;
+    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, { completed: false, actual: null }); return merged; } return x; }) }); });
+    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
+      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
+    });
   }
   function updateEntry(id, patch) {
-    var merged = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { merged = Object.assign({}, x, patch); return merged; } return x; }) }); });
-    if (merged) track(db.dbUpdateEntry(userId, merged));
+    var merged = null, previous = null;
+    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, patch); return merged; } return x; }) }); });
+    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
+      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
+    });
   }
   function deleteEntry(id) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteEntry(id)); }
 

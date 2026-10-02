@@ -34,6 +34,7 @@ function AppInner(props) {
   var st5 = useState(null); var searchLogEntry = st5[0], setSearchLogEntry = st5[1];
   var st6 = useState(false); var recapOpen = st6[0], setRecapOpen = st6[1];
   var st7 = useState(false); var dbError = st7[0], setDbError = st7[1];
+  var st8 = useState(''); var criticalErrorMsg = st8[0], setCriticalErrorMsg = st8[1];
 
   function loadAll() {
     return db.fetchAllData(userId).then(function (data) {
@@ -81,15 +82,16 @@ function AppInner(props) {
   /* Zelfde als track(), maar voor opslag-acties waarbij de app anders stilletjes
      "gelukt" kan laten zien terwijl het opslaan in de database mislukt is (zoals
      een training als uitgevoerd markeren). Bij een fout: zet de lokale wijziging
-     terug (rollback) EN toon een pop-up met de exacte foutmelding, zodat dit
-     nooit meer onopgemerkt blijft staan als een vinkje dat er niet hoort te zijn. */
+     terug (rollback) EN zet de exacte foutmelding vast bovenin het scherm (geen
+     pop-up - die wordt op sommige telefoons/PWA's onzichtbaar geblokkeerd), zodat
+     dit nooit meer onopgemerkt blijft staan als een vinkje dat er niet hoort te zijn. */
   function trackCritical(promise, rollback) {
     promise.then(function () { setDbError(false); }).catch(function (err) {
       // eslint-disable-next-line no-console
       console.error(err);
       setDbError(true);
+      setCriticalErrorMsg((err && err.message) ? err.message : 'onbekende fout');
       if (rollback) rollback();
-      window.alert('Opslaan is niet gelukt: ' + (err && err.message ? err.message : 'onbekende fout') + '\n\nDe wijziging is daarom ook op je scherm weer teruggezet.');
     });
   }
 
@@ -286,7 +288,10 @@ function AppInner(props) {
   else if (tab === 'gezondheid') content = e(GezondheidTab, { state: state, addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight });
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
-    dbError ? e('div', { className: 'sticky top-0 z-50 px-4 py-2.5 text-center text-xs font-semibold', style: { background: 'var(--danger)', color: '#2A0E0E' } },
+    criticalErrorMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: 'var(--danger)', color: '#2A0E0E' } },
+      e('span', { className: 'flex-1' }, '⚠️ Opslaan is niet gelukt: ' + criticalErrorMsg + ' De wijziging is daarom teruggezet.'),
+      e('button', { onClick: function () { setCriticalErrorMsg(''); }, style: { color: '#2A0E0E', fontWeight: 700 } }, '✕')
+    ) : dbError ? e('div', { className: 'sticky top-0 z-50 px-4 py-2.5 text-center text-xs font-semibold', style: { background: 'var(--danger)', color: '#2A0E0E' } },
       '⚠️ Wijzigingen worden niet opgeslagen! Controleer je internetverbinding en ververs de pagina.'
     ) : null,
     e('div', { className: 'sticky top-0 z-30 flex items-center justify-between px-4 pt-4 pb-2', style: { background: 'var(--bg-app)' } },

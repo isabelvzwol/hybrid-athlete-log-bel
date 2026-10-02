@@ -67,8 +67,20 @@ export async function dbInsertEntry(userId, entry) {
   assertNoError('training toevoegen', error);
 }
 export async function dbUpdateEntry(userId, entry) {
-  var { error } = await supabase.from('schedule_entries').update(entryToRow(entry, userId)).eq('id', entry.id);
+  // .select() erbij: zonder deze toevoeging geeft Supabase ook "succes, geen
+  // foutmelding" terug als er 0 rijen zijn bijgewerkt (bijv. omdat het id niet
+  // (meer) bestaat). Dat zorgde eerder voor stille mislukkingen: de app dacht
+  // dat opslaan gelukt was, terwijl er in de database niets veranderde. Door
+  // hier te controleren hoeveel rijen er echt zijn teruggekomen, wordt zo'n
+  // situatie nu een duidelijke, zichtbare fout in plaats van een stille no-op.
+  var { data, error } = await supabase.from('schedule_entries').update(entryToRow(entry, userId)).eq('id', entry.id).select();
   assertNoError('training bijwerken', error);
+  if (!data || data.length === 0) {
+    var zeroRowsError = new Error('Niets opgeslagen: er is geen rij gevonden met id ' + entry.id + '.');
+    // eslint-disable-next-line no-console
+    console.error(zeroRowsError.message);
+    throw zeroRowsError;
+  }
 }
 export async function dbDeleteEntry(id) {
   var { error } = await supabase.from('schedule_entries').delete().eq('id', id);

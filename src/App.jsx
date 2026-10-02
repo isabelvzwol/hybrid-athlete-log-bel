@@ -35,7 +35,6 @@ function AppInner(props) {
   var st6 = useState(false); var recapOpen = st6[0], setRecapOpen = st6[1];
   var st7 = useState(false); var dbError = st7[0], setDbError = st7[1];
   var st8 = useState(''); var criticalErrorMsg = st8[0], setCriticalErrorMsg = st8[1];
-  var st9 = useState(''); var debugMsg = st9[0], setDebugMsg = st9[1];
 
   function loadAll() {
     return db.fetchAllData(userId).then(function (data) {
@@ -102,43 +101,44 @@ function AppInner(props) {
   function deleteRace(id) { setState(function (p) { return Object.assign({}, p, { races: p.races.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteRace(id)); }
 
   function addEntry(entry) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.concat([entry]) }); }); track(db.dbInsertEntry(userId, entry)); }
-  function completeEntry(id, actual) {
+  /* Past een wijziging (afvinken, uitvinken, of een andere patch) toe op een
+     training. Normaal gesproken staat de training nog "vers" in het scherm en
+     werkt dit zoals voorheen: lokaal bijwerken + opslaan, met terugzetten als
+     het opslaan mislukt.
+     Vangnet: als de training niet (meer) in de lokale lijst staat - bijv. na
+     het wisselen van tab/app, een tijdje op de achtergrond staan, of een
+     verouderde kopie in het geheugen - wordt de actuele versie alsnog
+     rechtstreeks uit de database opgehaald, de wijziging daarop toegepast en
+     alsnog opgeslagen, in plaats van de wijziging stilletjes te laten
+     mislukken. */
+  function applyEntryPatch(id, patch) {
     var merged = null, previous = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, { completed: true, actual: actual }); return merged; } return x; }) }); });
-    // TIJDELIJK voor het opsporen van het Leg day-opslagprobleem: laat bij elke
-    // poging zien wat er gebeurt, ongeacht of het lukt of niet - dit mag er weer
-    // uit zodra de oorzaak gevonden is.
-    if (!merged) {
-      setDebugMsg('DEBUG: kon geen training met id ' + id + ' terugvinden in het scherm - er is dus niets verstuurd.');
+    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, patch); return merged; } return x; }) }); });
+    if (merged) {
+      trackCritical(db.dbUpdateEntry(userId, merged), function () {
+        setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
+      });
       return;
     }
-    setDebugMsg('DEBUG: opslaan gestart voor id ' + id + '...');
-    db.dbUpdateEntry(userId, merged).then(function () {
-      setDbError(false);
-      setDebugMsg('DEBUG: Supabase zegt dat opslaan GELUKT is voor id ' + id + ' (completed: true verstuurd).');
+    db.dbFetchEntry(userId, id).then(function (fresh) {
+      if (!fresh) {
+        setCriticalErrorMsg('Deze training bestaat niet (meer) in de database (id ' + id + ').');
+        return;
+      }
+      var mergedFresh = Object.assign({}, fresh, patch);
+      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.concat([mergedFresh]) }); });
+      trackCritical(db.dbUpdateEntry(userId, mergedFresh), function () {
+        setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.filter(function (x) { return x.id !== id; }) }); });
+      });
     }).catch(function (err) {
       // eslint-disable-next-line no-console
       console.error(err);
-      setDbError(true);
-      setCriticalErrorMsg((err && err.message) ? err.message : 'onbekende fout');
-      setDebugMsg('DEBUG: opslaan MISLUKT voor id ' + id + ': ' + ((err && err.message) || 'onbekende fout'));
-      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
+      setCriticalErrorMsg((err && err.message) ? err.message : 'onbekende fout bij het ophalen van de training');
     });
   }
-  function uncompleteEntry(id) {
-    var merged = null, previous = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, { completed: false, actual: null }); return merged; } return x; }) }); });
-    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
-      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
-    });
-  }
-  function updateEntry(id, patch) {
-    var merged = null, previous = null;
-    setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, patch); return merged; } return x; }) }); });
-    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
-      setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
-    });
-  }
+  function completeEntry(id, actual) { applyEntryPatch(id, { completed: true, actual: actual }); }
+  function uncompleteEntry(id) { applyEntryPatch(id, { completed: false, actual: null }); }
+  function updateEntry(id, patch) { applyEntryPatch(id, patch); }
   function deleteEntry(id) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteEntry(id)); }
 
   function addStrengthLog(log) { setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.concat([log]) }); }); track(db.dbInsertStrengthLog(userId, log)); }
@@ -305,10 +305,6 @@ function AppInner(props) {
   else if (tab === 'gezondheid') content = e(GezondheidTab, { state: state, addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight });
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
-    debugMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: '#2E5BFF', color: '#FFFFFF' } },
-      e('span', { className: 'flex-1' }, debugMsg),
-      e('button', { onClick: function () { setDebugMsg(''); }, style: { color: '#FFFFFF', fontWeight: 700 } }, '✕')
-    ) : null,
     criticalErrorMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: 'var(--danger)', color: '#2A0E0E' } },
       e('span', { className: 'flex-1' }, '⚠️ Opslaan is niet gelukt: ' + criticalErrorMsg + ' De wijziging is daarom teruggezet.'),
       e('button', { onClick: function () { setCriticalErrorMsg(''); }, style: { color: '#2A0E0E', fontWeight: 700 } }, '✕')

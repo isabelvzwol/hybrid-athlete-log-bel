@@ -35,6 +35,7 @@ function AppInner(props) {
   var st6 = useState(false); var recapOpen = st6[0], setRecapOpen = st6[1];
   var st7 = useState(false); var dbError = st7[0], setDbError = st7[1];
   var st8 = useState(''); var criticalErrorMsg = st8[0], setCriticalErrorMsg = st8[1];
+  var st9 = useState(''); var debugMsg = st9[0], setDebugMsg = st9[1];
 
   function loadAll() {
     return db.fetchAllData(userId).then(function (data) {
@@ -104,7 +105,23 @@ function AppInner(props) {
   function completeEntry(id, actual) {
     var merged = null, previous = null;
     setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { if (x.id === id) { previous = x; merged = Object.assign({}, x, { completed: true, actual: actual }); return merged; } return x; }) }); });
-    if (merged) trackCritical(db.dbUpdateEntry(userId, merged), function () {
+    // TIJDELIJK voor het opsporen van het Leg day-opslagprobleem: laat bij elke
+    // poging zien wat er gebeurt, ongeacht of het lukt of niet - dit mag er weer
+    // uit zodra de oorzaak gevonden is.
+    if (!merged) {
+      setDebugMsg('DEBUG: kon geen training met id ' + id + ' terugvinden in het scherm - er is dus niets verstuurd.');
+      return;
+    }
+    setDebugMsg('DEBUG: opslaan gestart voor id ' + id + '...');
+    db.dbUpdateEntry(userId, merged).then(function () {
+      setDbError(false);
+      setDebugMsg('DEBUG: Supabase zegt dat opslaan GELUKT is voor id ' + id + ' (completed: true verstuurd).');
+    }).catch(function (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      setDbError(true);
+      setCriticalErrorMsg((err && err.message) ? err.message : 'onbekende fout');
+      setDebugMsg('DEBUG: opslaan MISLUKT voor id ' + id + ': ' + ((err && err.message) || 'onbekende fout'));
       setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.map(function (x) { return x.id === id ? previous : x; }) }); });
     });
   }
@@ -288,6 +305,10 @@ function AppInner(props) {
   else if (tab === 'gezondheid') content = e(GezondheidTab, { state: state, addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight });
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
+    debugMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: '#2E5BFF', color: '#FFFFFF' } },
+      e('span', { className: 'flex-1' }, debugMsg),
+      e('button', { onClick: function () { setDebugMsg(''); }, style: { color: '#FFFFFF', fontWeight: 700 } }, '✕')
+    ) : null,
     criticalErrorMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: 'var(--danger)', color: '#2A0E0E' } },
       e('span', { className: 'flex-1' }, '⚠️ Opslaan is niet gelukt: ' + criticalErrorMsg + ' De wijziging is daarom teruggezet.'),
       e('button', { onClick: function () { setCriticalErrorMsg(''); }, style: { color: '#2A0E0E', fontWeight: 700 } }, '✕')

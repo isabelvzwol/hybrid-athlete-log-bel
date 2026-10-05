@@ -260,12 +260,25 @@ function AppInner(props) {
     setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).filter(function (x) { return x.date !== date; }) }); });
     trackCritical(db.dbDeleteMealPlanDay(userId, date), function () { if (previous) setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).concat([previous]) }); }); });
   }
-  function saveShopping(week, checked, extras) {
+  function saveShopping(week, checked, extras, home) {
     var previous = (state.mealShopping || []).find(function (x) { return x.week === week; });
-    var row = { id: previous ? previous.id : uid(), week: week, checked: checked, extras: extras };
+    var row = { id: previous ? previous.id : uid(), week: week, checked: checked, extras: extras, home: home || [] };
     setState(function (p) { return Object.assign({}, p, { mealShopping: (p.mealShopping || []).filter(function (x) { return x.week !== week; }).concat([row]) }); });
-    trackCritical(db.dbUpsertMealShopping(userId, week, checked, extras), function () {
+    trackCritical(db.dbUpsertMealShopping(userId, week, checked, extras, home || []), function () {
       setState(function (p) { return Object.assign({}, p, { mealShopping: (p.mealShopping || []).filter(function (x) { return x.week !== week; }).concat(previous ? [previous] : []) }); });
+    });
+  }
+  /* Onthouden per product: winkel, plek in de volgorde en "altijd thuis". */
+  function saveProducts(list) {
+    var previous = (state.mealProducts || []).slice();
+    setState(function (p) {
+      var map = {};
+      (p.mealProducts || []).forEach(function (x) { map[x.key] = x; });
+      list.forEach(function (x) { map[x.key] = Object.assign({}, map[x.key] || {}, x); });
+      return Object.assign({}, p, { mealProducts: Object.keys(map).map(function (k) { return map[k]; }) });
+    });
+    trackCritical(db.dbUpsertMealProducts(userId, list), function () {
+      setState(function (p) { return Object.assign({}, p, { mealProducts: previous }); });
     });
   }
   function addHyroxLog(log) { setState(function (p) { return Object.assign({}, p, { hyroxLogs: p.hyroxLogs.concat([log]) }); }); track(db.dbInsertHyroxLog(userId, log)); }
@@ -417,7 +430,7 @@ function AppInner(props) {
   var content;
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog });
-  else if (tab === 'eten') content = e(MealsTab, { state: state, addMeal: addMeal, updateMeal: updateMeal, deleteMeal: deleteMeal, saveMealDay: saveMealDay, clearMealDay: clearMealDay, saveShopping: saveShopping });
+  else if (tab === 'eten') content = e(MealsTab, { state: state, addMeal: addMeal, updateMeal: updateMeal, deleteMeal: deleteMeal, saveMealDay: saveMealDay, clearMealDay: clearMealDay, saveShopping: saveShopping, saveProducts: saveProducts });
   else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });

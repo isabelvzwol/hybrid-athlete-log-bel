@@ -52,6 +52,30 @@ export function enduranceArchiveItems(state, sport) {
   return out;
 }
 
+/* Hoort bij deze in Schema afgevinkte Kracht-training al een krachtlog (via
+   het opgeslagen strengthLogId, of anders dezelfde dag en hetzelfde schema)? */
+function entryHasStrengthLog(state, x) {
+  var a = x.actual || {};
+  return state.strengthLogs.some(function (l) {
+    return (a.strengthLogId && l.id === a.strengthLogId) || (l.date === x.date && l.template === x.type);
+  });
+}
+
+/* Warming-ups bij krachttraining: eigen duur en eigen hartslag. Een warming-up
+   zonder hartslag of zonder duur telt niet mee (zelfde regel als bij elke
+   andere sport). Ze tellen mee bij Kracht in de trainingslast. */
+export function strengthWarmupSamples(state) {
+  var out = [];
+  state.strengthLogs.forEach(function (l) {
+    if (l.warmupHr != null && l.warmupMinutes) out.push({ date: l.date, hr: l.warmupHr, timeSec: l.warmupMinutes * 60 });
+  });
+  state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && !entryHasStrengthLog(state, x); }).forEach(function (x) {
+    var a = x.actual;
+    if (a.warmupHr != null && a.warmupMinutes) out.push({ date: x.date, hr: a.warmupHr, timeSec: a.warmupMinutes * 60 });
+  });
+  return out;
+}
+
 /* Geeft per sessie ook timeSec mee naast hr - nodig voor de trainingslast-
    berekening hieronder, die uren x hartslagzone rekent. Bestaand gebruik van
    deze functie (bv. de hartslagzone-verdeling op Duursport) kijkt alleen naar
@@ -59,15 +83,19 @@ export function enduranceArchiveItems(state, sport) {
 export function hrSamplesForSport(state, sport) {
   var out = [];
   if (sport === 'Kracht') {
-    /* Duur van een Kracht-sessie telt inclusief warming-up: de warming-up
-       hoort bij dezelfde sessie en heeft geen eigen hartslagmeting, dus wordt
-       hij bij de duur van de hoofd-training opgeteld i.p.v. apart gewogen. */
+    /* Alleen de krachtsessie zelf (duur exclusief warming-up, met de
+       hartslag van de krachtsessie). De warming-up heeft een eigen duur en
+       hartslag en telt apart mee in de trainingslast, zie
+       strengthWarmupSamples hieronder. */
     state.strengthLogs.forEach(function (l) {
       if (l.hr == null) return;
-      var totalMin = l.durationMin != null ? l.durationMin + (l.warmupMinutes || 0) : null;
-      out.push({ date: l.date, hr: l.hr, timeSec: totalMin != null ? totalMin * 60 : null });
+      out.push({ date: l.date, hr: l.hr, timeSec: l.durationMin != null ? l.durationMin * 60 : null });
     });
-    state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && x.actual.hr != null; }).forEach(function (x) { out.push({ date: x.date, hr: x.actual.hr, timeSec: null }); });
+    /* Kracht-trainingen die in Schema zijn afgevinkt tellen alleen mee als er
+       geen krachtlog bij hoort, anders wordt dezelfde training dubbel geteld. */
+    state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && x.actual.hr != null && !entryHasStrengthLog(state, x); }).forEach(function (x) {
+      out.push({ date: x.date, hr: x.actual.hr, timeSec: x.actual.durationMin != null ? x.actual.durationMin * 60 : null });
+    });
     return out;
   }
   if (sport === 'Hyrox') {
@@ -120,17 +148,19 @@ export function trainingLoadByWeek(state, weeksCount) {
     byWeek[monday] = {};
     order.push(monday);
   }
+  function addSample(sport, s) {
+    if (!s.timeSec) return;
+    var monday = getMonday(s.date);
+    if (byWeek[monday] == null) return;
+    var zone = hrZone(s.hr);
+    if (!zone) return;
+    var w = (LOAD_ZONE_WEIGHT[zone.key] || 0) * (s.timeSec / 3600);
+    byWeek[monday][sport] = (byWeek[monday][sport] || 0) + w;
+  }
   HR_SPORTS.forEach(function (sport) {
-    hrSamplesForSport(state, sport).forEach(function (s) {
-      if (!s.timeSec) return;
-      var monday = getMonday(s.date);
-      if (byWeek[monday] == null) return;
-      var zone = hrZone(s.hr);
-      if (!zone) return;
-      var w = (LOAD_ZONE_WEIGHT[zone.key] || 0) * (s.timeSec / 3600);
-      byWeek[monday][sport] = (byWeek[monday][sport] || 0) + w;
-    });
+    hrSamplesForSport(state, sport).forEach(function (s) { addSample(sport, s); });
   });
+  strengthWarmupSamples(state).forEach(function (s) { addSample('Kracht', s); });
   return order.map(function (monday) { return { label: '' + isoWeekNumber(monday), bySport: byWeek[monday] }; });
 }
 

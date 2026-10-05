@@ -14,6 +14,7 @@ import { NAV, DEFAULT_STRENGTH_TEMPLATES } from './lib/constants.js';
 import { Home } from './screens/Home.jsx';
 import { SchemaTab } from './screens/Schema.jsx';
 import { KrachtTab } from './screens/Kracht.jsx';
+import { MealsTab } from './screens/Maaltijden.jsx';
 import { HyroxTab } from './screens/Hyrox.jsx';
 import { DuursportTab } from './screens/Duursport.jsx';
 import { PRTab } from './screens/PRs.jsx';
@@ -230,6 +231,43 @@ function AppInner(props) {
     if (merged) track(db.dbUpdateStrengthTemplate(userId, merged));
   }
   function deleteStrengthTemplate(id) { setState(function (p) { return Object.assign({}, p, { strengthTemplates: p.strengthTemplates.filter(function (t) { return t.id !== id; }) }); }); track(db.dbDeleteStrengthTemplate(id)); }
+  /* Eten-tab: eigen maaltijden, avondeten per dag en boodschappenlijst per week.
+     Allemaal "kritiek": mislukt opslaan, dan wordt de wijziging teruggezet en
+     zie je een rode melding bovenin. */
+  function addMeal(m) {
+    setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).concat([m]) }); });
+    trackCritical(db.dbInsertMeal(userId, m), function () { setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).filter(function (x) { return x.id !== m.id; }) }); }); });
+  }
+  function updateMeal(m) {
+    var previous = (state.meals || []).find(function (x) { return x.id === m.id; });
+    setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).map(function (x) { return x.id === m.id ? m : x; }) }); });
+    trackCritical(db.dbUpdateMeal(userId, m), function () { if (previous) setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).map(function (x) { return x.id === m.id ? previous : x; }) }); }); });
+  }
+  function deleteMeal(id) {
+    var previous = (state.meals || []).find(function (x) { return x.id === id; });
+    setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).filter(function (x) { return x.id !== id; }) }); });
+    trackCritical(db.dbDeleteMeal(id), function () { if (previous) setState(function (p) { return Object.assign({}, p, { meals: (p.meals || []).concat([previous]) }); }); });
+  }
+  function saveMealDay(entry) {
+    var previous = (state.mealPlan || []).find(function (x) { return x.date === entry.date; });
+    setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).filter(function (x) { return x.date !== entry.date; }).concat([entry]) }); });
+    trackCritical(db.dbUpsertMealPlan(userId, entry), function () {
+      setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).filter(function (x) { return x.date !== entry.date; }).concat(previous ? [previous] : []) }); });
+    });
+  }
+  function clearMealDay(date) {
+    var previous = (state.mealPlan || []).find(function (x) { return x.date === date; });
+    setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).filter(function (x) { return x.date !== date; }) }); });
+    trackCritical(db.dbDeleteMealPlanDay(userId, date), function () { if (previous) setState(function (p) { return Object.assign({}, p, { mealPlan: (p.mealPlan || []).concat([previous]) }); }); });
+  }
+  function saveShopping(week, checked, extras) {
+    var previous = (state.mealShopping || []).find(function (x) { return x.week === week; });
+    var row = { id: previous ? previous.id : uid(), week: week, checked: checked, extras: extras };
+    setState(function (p) { return Object.assign({}, p, { mealShopping: (p.mealShopping || []).filter(function (x) { return x.week !== week; }).concat([row]) }); });
+    trackCritical(db.dbUpsertMealShopping(userId, week, checked, extras), function () {
+      setState(function (p) { return Object.assign({}, p, { mealShopping: (p.mealShopping || []).filter(function (x) { return x.week !== week; }).concat(previous ? [previous] : []) }); });
+    });
+  }
   function addHyroxLog(log) { setState(function (p) { return Object.assign({}, p, { hyroxLogs: p.hyroxLogs.concat([log]) }); }); track(db.dbInsertHyroxLog(userId, log)); }
   function logHyroxSession(log) {
     track(db.dbInsertHyroxLog(userId, log));
@@ -379,6 +417,7 @@ function AppInner(props) {
   var content;
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog });
+  else if (tab === 'eten') content = e(MealsTab, { state: state, addMeal: addMeal, updateMeal: updateMeal, deleteMeal: deleteMeal, saveMealDay: saveMealDay, clearMealDay: clearMealDay, saveShopping: saveShopping });
   else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
@@ -400,10 +439,10 @@ function AppInner(props) {
       )
     ),
     e('div', { className: 'flex-1 px-4 pb-28 pt-2 fade-in', key: tab }, content),
-    e('div', { className: 'fixed bottom-0 left-0 right-0 z-40 flex justify-around items-center px-1 pt-2', style: { background: 'var(--bg-card)', borderTop: '1px solid var(--border-soft)', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 8px)' } },
+    e('div', { className: 'fixed bottom-0 left-0 right-0 z-40 flex justify-around items-center px-1 pt-2 overflow-x-auto scrollbar-none', style: { background: 'var(--bg-card)', borderTop: '1px solid var(--border-soft)', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 8px)' } },
       NAV.map(function (n) {
         var active = n.key === tab;
-        return e('button', { key: n.key, onClick: function () { setTab(n.key); }, className: 'flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl', style: { background: active ? 'var(--sage-bg)' : 'transparent' } },
+        return e('button', { key: n.key, onClick: function () { setTab(n.key); }, className: 'flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl shrink-0', style: { background: active ? 'var(--sage-bg)' : 'transparent' } },
           e('span', { style: { fontSize: '19px', opacity: active ? 1 : 0.55 } }, n.icon),
           e('span', { className: 'text-[10px] font-medium', style: { color: active ? 'var(--sage-strong)' : 'var(--text-tertiary)' } }, n.label)
         );

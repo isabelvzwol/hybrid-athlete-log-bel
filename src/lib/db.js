@@ -160,6 +160,52 @@ export async function seedDefaultStrengthTemplates(userId, defaults) {
   assertNoError('standaardschema\'s aanmaken', error);
 }
 
+/* ---------- meals (eigen maaltijden) ----------
+   "ingredients" is een jsonb-array van tekstregels (geen hoeveelheden). */
+function mealFromRow(row) { return { id: row.id, name: row.name, ingredients: row.ingredients || [] }; }
+function mealToRow(m, userId) { return { id: m.id, user_id: userId, name: m.name, ingredients: m.ingredients || [] }; }
+export async function dbInsertMeal(userId, m) {
+  var { error } = await supabase.from('meals').insert(mealToRow(m, userId));
+  assertNoError('maaltijd opslaan', error);
+}
+export async function dbUpdateMeal(userId, m) {
+  var { error } = await supabase.from('meals').update(mealToRow(m, userId)).eq('id', m.id);
+  assertNoError('maaltijd bijwerken', error);
+}
+export async function dbDeleteMeal(id) {
+  var { error } = await supabase.from('meals').delete().eq('id', id);
+  assertNoError('maaltijd verwijderen', error);
+}
+
+/* ---------- meal_plan (avondeten per dag) ----------
+   Eén rij per dag per gebruiker (unique op user_id+date): upsert dus. Naam en
+   ingrediënten zijn een kopie van de maaltijd op het moment van plannen, zodat
+   aanpassingen voor één dag de bewaarde maaltijd niet veranderen. */
+function mealPlanFromRow(row) {
+  return { id: row.id, date: row.date, kind: row.kind || 'meal', mealId: row.meal_id || null, name: row.name || '', ingredients: row.ingredients || [], persons: row.persons, note: row.note || '' };
+}
+function mealPlanToRow(x, userId) {
+  return { user_id: userId, date: x.date, kind: x.kind, meal_id: x.mealId || null, name: x.name || null, ingredients: x.ingredients || [], persons: x.persons != null ? x.persons : null, note: x.note || null };
+}
+export async function dbUpsertMealPlan(userId, x) {
+  var { error } = await supabase.from('meal_plan').upsert(mealPlanToRow(x, userId), { onConflict: 'user_id,date' });
+  assertNoError('avondeten opslaan', error);
+}
+export async function dbDeleteMealPlanDay(userId, date) {
+  var { error } = await supabase.from('meal_plan').delete().eq('user_id', userId).eq('date', date);
+  assertNoError('avondeten verwijderen', error);
+}
+
+/* ---------- meal_shopping (afvinkstatus en extra's per week) ---------- */
+function mealShoppingFromRow(row) { return { id: row.id, week: row.week, checked: row.checked || [], extras: row.extras || [] }; }
+export async function dbUpsertMealShopping(userId, week, checked, extras) {
+  var { error } = await supabase.from('meal_shopping').upsert(
+    { user_id: userId, week: week, checked: checked, extras: extras },
+    { onConflict: 'user_id,week' }
+  );
+  assertNoError('boodschappenlijst opslaan', error);
+}
+
 /* ---------- hyrox_library ---------- */
 function hyroxWorkoutFromRow(row) { return { id: row.id, name: row.name, blocks: row.blocks || [] }; }
 function hyroxWorkoutToRow(w, userId) { return { id: w.id, user_id: userId, name: w.name, blocks: w.blocks || [] }; }
@@ -355,9 +401,27 @@ async function fetchBodyWeightLogsSafely(userId) {
   }
 }
 
+// Zelfde vangnet voor de tabellen van de Eten-tab (meals, meal_plan,
+// meal_shopping): bestaan ze nog niet (SQL nog niet gedraaid), dan laadt de
+// rest van de app gewoon door met lege lijsten.
+async function fetchOptionalTableSafely(table, userId, orderColumn) {
+  try {
+    var res = await supabase.from(table).select('*').eq('user_id', userId).order(orderColumn, { ascending: true });
+    if (res.error) throw res.error;
+    return res.data;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Supabase-fout bij ophalen van ' + table + ' (mogelijk migratie nog niet uitgevoerd):', err);
+    return [];
+  }
+}
+
 export async function fetchAllData(userId) {
   var strengthTemplatesPromise = fetchStrengthTemplatesSafely(userId);
   var bodyWeightLogsPromise = fetchBodyWeightLogsSafely(userId);
+  var mealsPromise = fetchOptionalTableSafely('meals', userId, 'created_at');
+  var mealPlanPromise = fetchOptionalTableSafely('meal_plan', userId, 'date');
+  var mealShoppingPromise = fetchOptionalTableSafely('meal_shopping', userId, 'week');
 
   var results = await Promise.all([
     supabase.from('races').select('*').eq('user_id', userId).order('date', { ascending: true }),
@@ -376,6 +440,9 @@ export async function fetchAllData(userId) {
 
   var strengthTemplatesRows = await strengthTemplatesPromise;
   var bodyWeightLogsRows = await bodyWeightLogsPromise;
+  var mealsRows = await mealsPromise;
+  var mealPlanRows = await mealPlanPromise;
+  var mealShoppingRows = await mealShoppingPromise;
 
   var [races, entries, strength, hyroxLib, hyroxLogs, hyroxRace, runRace, endurance, mood, complaints, checklist] = results;
 
@@ -392,6 +459,9 @@ export async function fetchAllData(userId) {
     moodLogs: mood.data.map(moodLogFromRow),
     complaintLogs: complaints.data.map(complaintFromRow),
     bodyWeightLogs: bodyWeightLogsRows.map(bodyWeightFromRow),
+    meals: mealsRows.map(mealFromRow),
+    mealPlan: mealPlanRows.map(mealPlanFromRow),
+    mealShopping: mealShoppingRows.map(mealShoppingFromRow),
     triathlonChecklist: groupChecklistRows(checklist.data),
     isEmpty: races.data.length === 0 && entries.data.length === 0 && hyroxLib.data.length === 0 && checklist.data.length === 0,
   };

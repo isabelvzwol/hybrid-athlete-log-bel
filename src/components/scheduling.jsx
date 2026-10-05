@@ -4,7 +4,6 @@
 import React, { useState } from 'react';
 import { Card, Badge, Button, Field, TextInput, Modal, KebabMenu, ConfirmInline } from './ui.jsx';
 import { HRZoneBadge } from './charts.jsx';
-import { ExerciseRow, StrengthChartModal, strengthLastLog, strengthLastSets, strengthBestWeight, strengthBestRepsPerWeight, groupBySuperset, SupersetGroup } from './strength.jsx';
 import { WorkoutBlocks } from './hyroxShared.jsx';
 import { computePreview } from '../lib/domain.js';
 import { uid, num, addDays, formatDateShort, getMonday, todayISO, WEEKDAYS_FULL, toDate, parseDuration, formatDuration } from '../lib/helpers.js';
@@ -120,16 +119,10 @@ export function LogTrainingModal(props) {
   var stEditingPlan = useState(false); var editingPlan = stEditingPlan[0], setEditingPlan = stEditingPlan[1];
   var stMoving = useState(false); var movingDate = stMoving[0], setMovingDate = stMoving[1];
   var stMoveDate = useState(entry.date); var moveDate = stMoveDate[0], setMoveDate = stMoveDate[1];
-  var stChartEx = useState(null); var chartExercise = stChartEx[0], setChartExercise = stChartEx[1];
-  var stKrachtEx = useState(krachtTemplate ? krachtTemplate.exercises.slice() : []); var krachtExercises = stKrachtEx[0], setKrachtExercises = stKrachtEx[1];
-  var stKrachtNew = useState(''); var krachtNewEx = stKrachtNew[0], setKrachtNewEx = stKrachtNew[1];
   var stWarmupType = useState(a.warmupType || ''); var warmupType = stWarmupType[0], setWarmupType = stWarmupType[1];
   var stWarmupMin = useState(a.warmupMinutes != null ? a.warmupMinutes : ''); var warmupMinutes = stWarmupMin[0], setWarmupMinutes = stWarmupMin[1];
+  var stWarmupHr = useState(a.warmupHr != null ? a.warmupHr : ''); var warmupHr = stWarmupHr[0], setWarmupHr = stWarmupHr[1];
   var stKrachtDur = useState(a.durationMin != null ? a.durationMin : ''); var krachtDurationMinutes = stKrachtDur[0], setKrachtDurationMinutes = stKrachtDur[1];
-  var krachtSessionRef = React.useRef({});
-  function removeKrachtExercise(name) { setKrachtExercises(function (p) { return p.filter(function (x) { return x.name !== name; }); }); }
-  function moveKrachtExercise(idx, dir) { setKrachtExercises(function (p) { var n = p.slice(); var j = idx + dir; if (j < 0 || j >= n.length) return p; var tmp = n[idx]; n[idx] = n[j]; n[j] = tmp; return n; }); }
-  function toggleKrachtLink(idx) { setKrachtExercises(function (p) { var n = p.slice(); n[idx] = Object.assign({}, n[idx], { linkToNext: !n[idx].linkToNext }); return n; }); }
   var st = useState({
     distance: a.distance != null ? a.distance : (entry.distance != null ? entry.distance : ''),
     time: a.time || '',
@@ -159,23 +152,14 @@ export function LogTrainingModal(props) {
         note: f.note
       };
     } else if (isKracht) {
-      if (krachtTemplate) {
-        var list = [];
-        krachtExercises.forEach(function (item) {
-          var name = item.name;
-          var data = krachtSessionRef.current[name] || { sets: [], note: '' };
-          var sets = (data.sets || []).filter(function (s) { return s.reps !== '' || s.weight !== ''; }).map(function (s) { return { reps: num(s.reps) || 0, weight: num(s.weight) || 0 }; });
-          if (sets.length) list.push({ name: name, sets: sets, note: data.note || '' });
-        });
-        if (list.length) props.onSaveStrengthLog({ id: uid(), date: entry.date, template: entry.type, exercises: list, hr: num(f.hr), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null, durationMin: num(krachtDurationMinutes) });
-      }
-      // Duur en warming-up altijd op de training zelf bewaren (ongeacht of er
-      // sets/herhalingen zijn ingevuld): voorheen gingen deze velden alleen mee
-      // met de losse krachttraining-log hierboven, en die wordt alleen
-      // aangemaakt als er minstens 1 oefening met sets is ingevuld. Daardoor
-      // gingen duur en warming-up stilletjes verloren als je alleen hartslag,
-      // duur en warming-up invulde zonder sets te loggen.
-      actual = { note: f.note, hr: num(f.hr), durationMin: num(krachtDurationMinutes), warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null };
+      // Sets, reps en gewichten worden in de Kracht-tab gelogd (daar wordt
+      // ook de krachtlog aangemaakt). Hier bewaren we alleen hartslag, duur
+      // en warming-up op de training zelf.
+      actual = {
+        note: f.note, hr: num(f.hr), durationMin: num(krachtDurationMinutes),
+        warmupType: warmupType || null, warmupMinutes: warmupType ? num(warmupMinutes) : null, warmupHr: warmupType ? num(warmupHr) : null,
+        strengthLogId: a.strengthLogId || null
+      };
     } else if (isHyrox) {
       if (hyroxWorkoutId && f.time) props.onSaveHyroxLog({ id: uid(), workoutId: hyroxWorkoutId, date: entry.date, time: f.time, note: f.note, hr: num(f.hr) });
       actual = { workoutId: hyroxWorkoutId, time: f.time, note: f.note, hr: num(f.hr) };
@@ -219,49 +203,31 @@ export function LogTrainingModal(props) {
       ] })
     ),
     e('p', { className: 'text-xs mb-4', style: { color: 'var(--text-tertiary)' } }, entry.plannedText || 'Geen omschrijving'),
-    isKracht && krachtTemplate ? e('div', { className: 'flex flex-col gap-3' },
-      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Dit wordt ook opgeslagen bij Krachttraining.'),
-      (function () {
-        var groups = groupBySuperset(krachtExercises);
-        var flatIdx = 0;
-        return groups.map(function (group, gi) {
-          var rows = group.map(function (item) {
-            var idx = flatIdx; flatIdx++;
-            return e(ExerciseRow, {
-              key: item.name, exercise: item.name, lastLog: strengthLastLog(props.strengthLogs, item.name), sets: strengthLastSets(props.strengthLogs, item.name), best: strengthBestWeight(props.strengthLogs, item.name), bestReps: strengthBestRepsPerWeight(props.strengthLogs, item.name),
-              onChange: function (ex, data) { krachtSessionRef.current[ex] = data; }, onRemove: function () { removeKrachtExercise(item.name); },
-              onMoveUp: idx > 0 ? function () { moveKrachtExercise(idx, -1); } : null, onMoveDown: idx < krachtExercises.length - 1 ? function () { moveKrachtExercise(idx, 1); } : null,
-              onToggleLink: idx < krachtExercises.length - 1 ? function () { toggleKrachtLink(idx); } : null, linked: krachtExercises[idx] && krachtExercises[idx].linkToNext,
-              onShowChart: function () { setChartExercise(item.name); }
-            });
-          });
-          return e(SupersetGroup, { key: gi }, rows);
-        });
-      })(),
-      e('div', { className: 'flex gap-2' },
-        e(TextInput, { placeholder: 'Nieuwe oefening', value: krachtNewEx, onChange: function (ev) { setKrachtNewEx(ev.target.value); } }),
-        e(Button, { variant: 'ghost', onClick: function () { if (!krachtNewEx.trim()) return; setKrachtExercises(function (p) { return p.concat([{ name: krachtNewEx.trim(), linkToNext: false }]); }); setKrachtNewEx(''); } }, '+ Toevoegen')
-      ),
+    isKracht ? e('div', { className: 'flex flex-col gap-3' },
+      krachtTemplate && !entry.completed ? e(Card, { className: 'p-3.5 flex flex-col gap-2' },
+        e('div', { className: 'text-sm font-semibold' }, '🏋️ Sets, herhalingen en gewichten'),
+        e('p', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Die log je in de Kracht-tab. Zodra je daar opslaat, wordt deze training hier automatisch afgevinkt.'),
+        e(Button, { onClick: function () { props.onClose(); window.dispatchEvent(new CustomEvent('hal-start-strength', { detail: entry })); } }, 'Start in Kracht-tab')
+      ) : e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Sets, herhalingen en gewichten log je in de Kracht-tab. Hier kun je hartslag, duur en warming-up invullen of aanpassen.'),
       e(Card, { className: 'p-3.5' },
         e('div', { className: 'text-sm font-semibold mb-2' }, '🚴 Warming-up (optioneel)'),
         e('div', { className: 'grid grid-cols-2 gap-3' },
           e(Field, { label: 'Type' }, e('select', { value: warmupType, onChange: function (ev) { setWarmupType(ev.target.value); } },
             [e('option', { key: '', value: '' }, 'Geen')].concat(WARMUP_TYPES.map(function (w) { return e('option', { key: w, value: w }, w); }))
           )),
-          e(Field, { label: 'Duur (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
-        )
+          e(Field, { label: 'Duur WU (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
+        ),
+        e('div', { className: 'mt-3' },
+          e(Field, { label: 'Gem. hartslag WU (bpm)' }, e(TextInput, { type: 'number', value: warmupHr, onChange: function (ev) { setWarmupHr(ev.target.value); }, disabled: !warmupType }))
+        ),
+        warmupType && warmupHr ? e('div', { className: 'mt-2' }, e(HRZoneBadge, { hr: num(warmupHr) })) : null
       ),
       e('div', { className: 'grid grid-cols-2 gap-3' },
-        e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
-        e(Field, { label: 'Duur sessie (min)' }, e(TextInput, { type: 'number', value: krachtDurationMinutes, onChange: function (ev) { setKrachtDurationMinutes(ev.target.value); } }))
+        e(Field, { label: 'Gem. hartslag training (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+        e(Field, { label: 'Duur training (min, zonder WU)' }, e(TextInput, { type: 'number', value: krachtDurationMinutes, onChange: function (ev) { setKrachtDurationMinutes(ev.target.value); } }))
       ),
       f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
       e(Field, { label: 'Notitie / gevoel (algemeen)' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
-    ) : isKracht ? e('div', { className: 'flex flex-col gap-3' },
-      e('p', { className: 'text-sm', style: { color: 'var(--text-secondary)' } }, 'Log de sets, herhalingen en gewichten in de Kracht-tab. Hier vink je alleen af dat je de sessie hebt gedaan.'),
-      e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
-      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
-      e(Field, { label: 'Notitie / gevoel' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
     ) : isHyrox ? e('div', { className: 'flex flex-col gap-3' },
       e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Dit wordt ook opgeslagen bij Hyrox.'),
       e(Field, { label: 'Workout' }, e('select', { value: hyroxWorkoutId, onChange: function (ev) { setHyroxWorkoutId(ev.target.value); } },
@@ -342,8 +308,7 @@ export function LogTrainingModal(props) {
     e('div', { className: 'flex gap-2 mt-4' },
       e(Button, { onClick: save, className: 'flex-1' }, 'Markeer als uitgevoerd'),
       entry.completed ? e(ConfirmInline, { label: 'Verwijder log', onConfirm: function () { props.onUncomplete(entry.id); props.onClose(); } }) : null
-    ),
-    chartExercise ? e(StrengthChartModal, { name: chartExercise, strengthLogs: props.strengthLogs || [], onClose: function () { setChartExercise(null); } }) : null
+    )
   );
 }
 

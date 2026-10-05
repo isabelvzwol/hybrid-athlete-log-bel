@@ -40,10 +40,47 @@ export function RestDayCard(props) {
   );
 }
 
+/* Schakelaar "Dit is een wedstrijd" voor het toevoegen/bewerken van een training.
+   Aangezet maakt hij ook een wedstrijd aan op Home (naam, type, doeltempo). De
+   markering in het schema volgt uit die wedstrijd: een dag met een wedstrijd
+   krijgt 🏁. Staat er op de gekozen datum al een wedstrijd, dan tonen we dat in
+   plaats van een tweede aan te maken. */
+function emptyRace() { return { on: false, name: '', type: '', targetPace: '' }; }
+function raceOnDate(races, date) {
+  return (races || []).find(function (r) { return r.date === date; }) || null;
+}
+function newRaceFrom(race, date) {
+  return { id: uid(), name: race.name.trim(), date: date, type: race.type.trim(), targetPace: race.targetPace.trim(),
+    pacingNotes: '', carbNotes: '', pacingScenarios: null, mealPlan: { days: [] }, result: null };
+}
+function RaceToggle(props) {
+  var race = props.race;
+  if (props.existing) {
+    return e('p', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, '🏁 Op deze datum staat al een wedstrijd: ' + props.existing.name + '.');
+  }
+  function patch(p) { props.onChange(Object.assign({}, race, p)); }
+  return e('div', { className: 'flex flex-col gap-3' },
+    e('button', { onClick: function () { patch({ on: !race.on }); }, className: 'flex items-center gap-2 text-left' },
+      e('span', { className: 'w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0', style: race.on ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, race.on ? '✓' : ''),
+      e('span', { className: 'text-sm' }, '🏁 Dit is een wedstrijd')
+    ),
+    race.on ? e('div', { className: 'flex flex-col gap-3' },
+      e(Field, { label: 'Naam wedstrijd' }, e(TextInput, { value: race.name, onChange: function (ev) { patch({ name: ev.target.value }); }, placeholder: 'bv. Halve Marathon Malaga' })),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Type event' }, e(TextInput, { value: race.type, onChange: function (ev) { patch({ type: ev.target.value }); }, placeholder: 'bv. halve marathon' })),
+        e(Field, { label: 'Doeltempo (optioneel)' }, e(TextInput, { value: race.targetPace, onChange: function (ev) { patch({ targetPace: ev.target.value }); }, placeholder: 'bv. 4:40/km' }))
+      ),
+      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Je vindt de wedstrijd ook op Home, met aftellen, pacing en voeding.')
+    ) : null
+  );
+}
+
 export function EditEntryForm(props) {
   var entry = props.entry;
   var st = useState({ date: entry.date, weekLabel: entry.weekLabel || '', sport: entry.sport, type: entry.type, plannedText: entry.plannedText || '', distance: entry.distance != null ? entry.distance : '', pace: entry.pace || '' });
   var f = st[0], setF = st[1];
+  var stRace = useState(emptyRace()); var race = stRace[0], setRace = stRace[1];
+  var canRace = !!props.onAddRace;
   function set(k) { return function (ev) { var v = ev.target.value; setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }; }
   return e('div', { className: 'flex flex-col gap-3' },
     e('div', { className: 'grid grid-cols-2 gap-3' },
@@ -61,10 +98,14 @@ export function EditEntryForm(props) {
       e(Field, { label: 'Kilometer (optioneel)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
       e(Field, { label: 'Tempo (optioneel)' }, e(TextInput, { value: f.pace, onChange: set('pace') }))
     ),
+    canRace ? e(RaceToggle, { race: race, onChange: setRace, existing: raceOnDate(props.races, f.date) }) : null,
     e('div', { className: 'flex gap-2 mt-1' },
       e(Button, { className: 'flex-1', onClick: function () {
         if (!f.date || !f.type) return;
+        var wantsRace = canRace && race.on && !raceOnDate(props.races, f.date);
+        if (wantsRace && !race.name.trim()) return;
         props.onSave({ date: f.date, weekLabel: f.weekLabel, sport: f.sport, type: f.type, plannedText: f.plannedText, distance: num(f.distance), pace: f.pace });
+        if (wantsRace) props.onAddRace(newRaceFrom(race, f.date));
       } }, 'Opslaan'),
       e(Button, { variant: 'ghost', onClick: props.onCancel }, 'Annuleer')
     )
@@ -74,6 +115,10 @@ export function EditEntryForm(props) {
 export function AddScheduleEntryModal(props) {
   var st = useState({ date: props.defaultDate || todayISO(), weekLabel: '', sport: 'Hardlopen', type: '', plannedText: '', distance: '', pace: '', repeatWeeks: '1' });
   var f = st[0], setF = st[1];
+  var stRace = useState(emptyRace()); var race = stRace[0], setRace = stRace[1];
+  var canRace = !!props.onAddRace;
+  var existingRace = canRace ? raceOnDate(props.races, f.date) : null;
+  var makeRace = canRace && race.on && !existingRace;
   function set(k) { return function (ev) { var v = ev.target.value; setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }; }
   return e(Modal, { title: 'Training toevoegen', onClose: props.onClose },
     e('div', { className: 'flex flex-col gap-3' },
@@ -92,14 +137,18 @@ export function AddScheduleEntryModal(props) {
         e(Field, { label: 'Kilometer (optioneel)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
         e(Field, { label: 'Tempo (optioneel)' }, e(TextInput, { value: f.pace, onChange: set('pace'), placeholder: 'bv. 5:00' }))
       ),
-      e(Field, { label: 'Herhalen: elke week op deze dag, voor hoeveel weken?' }, e(TextInput, { type: 'number', value: f.repeatWeeks, onChange: set('repeatWeeks'), placeholder: '1 = niet herhalen' })),
+      canRace ? e(RaceToggle, { race: race, onChange: setRace, existing: existingRace }) : null,
+      makeRace ? null : e(Field, { label: 'Herhalen: elke week op deze dag, voor hoeveel weken?' }, e(TextInput, { type: 'number', value: f.repeatWeeks, onChange: set('repeatWeeks'), placeholder: '1 = niet herhalen' })),
       e(Button, { className: 'w-full mt-1', onClick: function () {
-        if (!f.date || !f.type) return;
-        var weeks = Math.max(1, Math.min(52, parseInt(f.repeatWeeks) || 1));
+        var type = f.type || (makeRace ? race.name.trim() : '');
+        if (!f.date || !type) return;
+        if (makeRace && !race.name.trim()) return;
+        var weeks = makeRace ? 1 : Math.max(1, Math.min(52, parseInt(f.repeatWeeks) || 1));
         for (var i = 0; i < weeks; i++) {
-          props.onAdd({ id: uid(), date: addDays(f.date, i * 7), weekLabel: i === 0 ? (f.weekLabel || ('Week van ' + formatDateShort(getMonday(f.date)))) : '', sport: f.sport, type: f.type,
+          props.onAdd({ id: uid(), date: addDays(f.date, i * 7), weekLabel: i === 0 ? (f.weekLabel || ('Week van ' + formatDateShort(getMonday(f.date)))) : '', sport: f.sport, type: type,
             plannedText: f.plannedText, distance: num(f.distance), pace: f.pace, hr: null, completed: false, actual: null });
         }
+        if (makeRace) props.onAddRace(newRaceFrom(race, f.date));
       } }, 'Training toevoegen')
     )
   );
@@ -176,7 +225,7 @@ export function LogTrainingModal(props) {
   }
   if (editingPlan) {
     return e(Modal, { title: 'Training bewerken', onClose: props.onClose },
-      e(EditEntryForm, { entry: entry, onCancel: function () { setEditingPlan(false); }, onSave: function (patch) { props.onUpdateEntry(entry.id, patch); setEditingPlan(false); } })
+      e(EditEntryForm, { entry: entry, races: props.races, onAddRace: props.onAddRace, onCancel: function () { setEditingPlan(false); }, onSave: function (patch) { props.onUpdateEntry(entry.id, patch); setEditingPlan(false); } })
     );
   }
   if (movingDate) {
@@ -321,6 +370,8 @@ export function WeekBlock(props) {
     for (var i = 0; i < count; i++) { rows.push({ dateIso: dateIso, isFirst: i === 0, rowSpan: count, entry: dayEntries[i] || null }); }
   });
   var isCurrentWeek = props.monday === getMonday(todayISO());
+  var raceByDate = {};
+  (props.races || []).forEach(function (r) { raceByDate[r.date] = r; });
   return e('div', { className: 'rounded-2xl overflow-hidden mb-4', style: { border: '1px solid var(--border-soft)' } },
     e('div', { className: 'px-3.5 py-2.5 flex items-center justify-between', style: { background: isCurrentWeek ? 'var(--sage-bg)' : 'var(--bg-elevated)' } },
       e('span', { className: 'text-sm font-semibold', style: isCurrentWeek ? { color: 'var(--sage-strong)' } : {} }, props.weekLabel),
@@ -329,20 +380,22 @@ export function WeekBlock(props) {
     e('table', { className: 'w-full text-sm' },
       e('tbody', {}, rows.map(function (r, idx) {
         var isToday = r.dateIso === todayISO();
+        var dayRace = raceByDate[r.dateIso] || null;
         return e('tr', { key: idx, style: { borderTop: idx > 0 ? '1px solid var(--border-soft)' : 'none', background: isToday ? 'var(--sage-bg)' : 'transparent', cursor: 'pointer' },
           onClick: function () { if (r.entry) props.onOpenEntry(r.entry); else props.onAddFor(r.dateIso); } },
           r.isFirst ? e('td', { rowSpan: r.rowSpan, className: 'px-3.5 py-2.5 align-top text-xs font-medium leading-tight', style: { color: isToday ? 'var(--sage-strong)' : 'var(--text-secondary)', width: '96px' } },
             e('div', { className: 'flex items-start gap-1.5' },
               e('span', {}, WEEKDAYS_FULL[toDate(r.dateIso).getDay()].charAt(0).toUpperCase() + WEEKDAYS_FULL[toDate(r.dateIso).getDay()].slice(1) + ' ' + toDate(r.dateIso).getDate()),
               e('button', { onClick: function (ev) { ev.stopPropagation(); props.onAddFor(r.dateIso); }, style: { color: 'var(--slate)' }, className: 'text-sm leading-none' }, '+')
-            )
+            ),
+            dayRace ? e('div', { className: 'mt-1' }, e(Badge, { tone: 'amber' }, '🏁 wedstrijd')) : null
           ) : null,
           e('td', { className: 'px-3.5 py-2.5' },
             r.entry ? e('div', { className: 'flex items-center gap-2' },
               e('span', {}, SPORT_ICON[r.entry.sport] || '•'),
-              e('span', { className: 'flex-1' }, r.entry.type + (r.entry.plannedText && r.entry.plannedText !== r.entry.type ? (': ' + r.entry.plannedText) : '')),
+              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' : '') + r.entry.type + (r.entry.plannedText && r.entry.plannedText !== r.entry.type ? (': ' + r.entry.plannedText) : '')),
               r.entry.completed ? e('span', { className: 'w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0', style: { background: 'var(--sage)', color: '#12180F' } }, '✓') : null
-            ) : e('span', { style: { color: 'var(--text-tertiary)' } }, 'Rust')
+            ) : (dayRace ? e('span', { className: 'font-medium' }, '🏁 ' + dayRace.name) : e('span', { style: { color: 'var(--text-tertiary)' } }, 'Rust'))
           )
         );
       }))

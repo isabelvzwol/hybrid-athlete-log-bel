@@ -6,6 +6,7 @@ export var SPORT_ICON = { Hardlopen: '🏃', 'Wielrennen / Kickr': '🚴', Zwemm
 export var NAV = [
   { key: 'home', label: 'Home', icon: '🏠' },
   { key: 'schema', label: 'Schema', icon: '📅' },
+  { key: 'eten', label: 'Eten', icon: '🍽️' },
   { key: 'gezondheid', label: 'Gezondheid', icon: '❤️' },
   { key: 'kracht', label: 'Kracht', icon: '🏋️' },
   { key: 'hyrox', label: 'Hyrox', icon: '⚡' },

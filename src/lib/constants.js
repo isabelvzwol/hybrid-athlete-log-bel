@@ -6,12 +6,12 @@ export var SPORT_ICON = { Hardlopen: '🏃', 'Wielrennen / Kickr': '🚴', Zwemm
 export var NAV = [
   { key: 'home', label: 'Home', icon: '🏠' },
   { key: 'schema', label: 'Schema', icon: '📅' },
-  { key: 'eten', label: 'Eten', icon: '🍽️' },
   { key: 'gezondheid', label: 'Gezondheid', icon: '❤️' },
   { key: 'kracht', label: 'Kracht', icon: '🏋️' },
   { key: 'hyrox', label: 'Hyrox', icon: '⚡' },
   { key: 'duursport', label: 'Duursport', icon: '📊' },
-  { key: 'prs', label: 'PRs', icon: '🏆' }
+  { key: 'prs', label: 'PRs', icon: '🏆' },
+  { key: 'eten', label: 'Eten', icon: '🍽️' }
 ];
 
 /* Startpunt waarmee elk account zijn "strength_templates" gevuld krijgt

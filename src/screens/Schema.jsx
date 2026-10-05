@@ -42,10 +42,10 @@ export function SchemaTab(props) {
       e('button', { onClick: function () { setMk(addMonthsToMonthKey(mk, 1)); }, className: 'w-8 h-8 rounded-full', style: { background: 'var(--bg-elevated)' } }, '→')
     ),
     view === 'week' ? e('button', { onClick: function () { copyWeek(monday); }, className: 'text-xs font-medium text-center', style: { color: 'var(--slate)' } }, '📄 Kopieer deze week naar volgende week') : null,
-    view === 'week' ? e(WeekBlock, { monday: monday, weekLabel: labelFor(monday), entries: props.state.scheduleEntries, onOpenEntry: setOpenEntry, onAddFor: setAddFor }) :
-      monthMondays.map(function (m) { return e(WeekBlock, { key: m, monday: m, weekLabel: labelFor(m), entries: props.state.scheduleEntries, onOpenEntry: setOpenEntry, onAddFor: setAddFor }); }),
+    view === 'week' ? e(WeekBlock, { monday: monday, weekLabel: labelFor(monday), entries: props.state.scheduleEntries, races: props.state.races, onOpenEntry: setOpenEntry, onAddFor: setAddFor }) :
+      monthMondays.map(function (m) { return e(WeekBlock, { key: m, monday: m, weekLabel: labelFor(m), entries: props.state.scheduleEntries, races: props.state.races, onOpenEntry: setOpenEntry, onAddFor: setAddFor }); }),
     openEntry ? e(LogTrainingModal, { entry: openEntry, onClose: function () { setOpenEntry(null); },
-      onSave: function (id, actual) { props.completeEntry(id, actual); setOpenEntry(null); }, onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, strengthLogs: props.state.strengthLogs, strengthTemplates: props.state.strengthTemplates, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: props.state.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
-    addFor ? e(AddScheduleEntryModal, { defaultDate: addFor, onClose: function () { setAddFor(null); }, onAdd: function (entry) { props.addEntry(entry); setAddFor(null); } }) : null
+      onSave: function (id, actual) { props.completeEntry(id, actual); setOpenEntry(null); }, onUncomplete: props.uncompleteEntry, onUpdateEntry: props.updateEntry, onDeleteEntry: props.deleteEntry, races: props.state.races, onAddRace: props.addRace, strengthLogs: props.state.strengthLogs, strengthTemplates: props.state.strengthTemplates, onSaveStrengthLog: props.addStrengthLog, hyroxLibrary: props.state.hyroxLibrary, onSaveHyroxLog: props.addHyroxLog }) : null,
+    addFor ? e(AddScheduleEntryModal, { defaultDate: addFor, races: props.state.races, onAddRace: props.addRace, onClose: function () { setAddFor(null); }, onAdd: function (entry) { props.addEntry(entry); setAddFor(null); } }) : null
   );
 }

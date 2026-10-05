@@ -201,7 +201,10 @@ function Trends(props) {
   );
 }
 function MoodTracker(props) {
-  var current = props.moodLogs.find(function (m) { return m.date === todayISO(); });
+  // Standaard staat de dag van vandaag geselecteerd; tik op een van de dagen in
+  // de balk eronder om achteraf alsnog een dag in te vullen of aan te passen.
+  var stSel = useState(todayISO()); var selected = stSel[0], setSelected = stSel[1];
+  var current = props.moodLogs.find(function (m) { return m.date === selected; });
   var options = [
     { key: 'green', emoji: '🟢', bg: 'var(--sage-bg)', border: 'var(--sage)' },
     { key: 'orange', emoji: '🟠', bg: 'var(--amber-bg)', border: 'var(--amber)' },
@@ -210,20 +213,29 @@ function MoodTracker(props) {
   var colorMap = { green: 'var(--sage)', orange: 'var(--amber)', red: 'var(--danger)' };
   var byDate = {}; props.moodLogs.forEach(function (m) { byDate[m.date] = m.mood; });
   var last7 = [6, 5, 4, 3, 2, 1, 0].map(function (i) { return addDays(todayISO(), -i); });
+  var isToday = selected === todayISO();
+  var isYesterday = selected === addDays(todayISO(), -1);
+  var title = isToday ? 'Hoe voel ik mij vandaag?'
+    : isYesterday ? 'Hoe voelde ik mij gisteren?'
+    : 'Hoe voelde ik mij op ' + WEEKDAYS_FULL[toDate(selected).getDay()] + ' ' + formatDateShort(selected) + '?';
   return e(Card, { className: 'p-4' },
-    e('div', { className: 'text-sm font-semibold mb-3' }, 'Hoe voel ik mij vandaag?'),
+    e('div', { className: 'text-sm font-semibold mb-3' }, title),
     e('div', { className: 'flex gap-2' }, options.map(function (o) {
       var active = current && current.mood === o.key;
-      return e('button', { key: o.key, onClick: function () { props.onSetMood(o.key); }, className: 'flex-1 rounded-xl py-3 flex items-center justify-center text-2xl',
+      return e('button', { key: o.key, onClick: function () { props.onSetMood(o.key, selected); }, className: 'flex-1 rounded-xl py-3 flex items-center justify-center text-2xl',
         style: { background: active ? o.bg : 'var(--bg-inset)', border: active ? ('1.5px solid ' + o.border) : '1px solid var(--border)' } }, o.emoji);
     })),
     e('div', { className: 'flex justify-between gap-1 mt-3' }, last7.map(function (d) {
       var mood = byDate[d];
-      return e('div', { key: d, className: 'flex flex-col items-center gap-1 flex-1' },
+      var isSel = d === selected;
+      return e('button', { key: d, onClick: function () { setSelected(d); }, className: 'flex flex-col items-center gap-1 flex-1 rounded-lg py-1',
+        style: { background: isSel ? 'var(--bg-elevated)' : 'transparent', border: isSel ? '1px solid var(--border)' : '1px solid transparent' } },
         e('div', { className: 'w-full h-2 rounded-full', style: { background: mood ? colorMap[mood] : 'var(--bg-inset)' } }),
-        e('span', { className: 'text-[10px]', style: { color: 'var(--text-tertiary)' } }, WEEKDAYS_FULL[toDate(d).getDay()].slice(0, 2))
+        e('span', { className: 'text-[10px]', style: { color: isSel ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: isSel ? 600 : 400 } }, WEEKDAYS_FULL[toDate(d).getDay()].slice(0, 2)),
+        e('span', { className: 'text-[10px]', style: { color: 'var(--text-tertiary)' } }, toDate(d).getDate())
       );
-    }))
+    })),
+    e('div', { className: 'text-[11px] mt-2', style: { color: 'var(--text-tertiary)' } }, 'Tik op een dag om die achteraf in te vullen of aan te passen.')
   );
 }
 function RaceHistoryModal(props) {

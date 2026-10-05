@@ -288,6 +288,7 @@ function ShoppingView(props) {
   var stReorder = useState(false); var reorder = stReorder[0], setReorder = stReorder[1];
   var stSheet = useState(null); var sheetKey = stSheet[0], setSheetKey = stSheet[1];
   var stHidden = useState(false); var showHidden = stHidden[0], setShowHidden = stHidden[1];
+  var stDoneOpen = useState(true); var doneOpen = stDoneOpen[0], setDoneOpen = stDoneOpen[1];
 
   var checkedKeys = row.checked || [];
   var extras = row.extras || [];
@@ -332,6 +333,19 @@ function ShoppingView(props) {
     if (!t) return;
     persist(checkedKeys, extras.concat([{ id: uid(), text: t, checked: false, store: newStore, kind: newKind }]), home);
     setNewText('');
+  }
+  /* Verwijdert een product van de lijst door het uit de geplande maaltijden van
+     deze week te halen. Je bewaarde maaltijd in "Maaltijden" blijft ongewijzigd. */
+  function removeProduct(key) {
+    for (var i = 0; i < 7; i++) {
+      var date = addDays(monday, i);
+      var item = props.plan.find(function (x) { return x.date === date && x.kind === 'meal'; });
+      if (!item) continue;
+      var ings = item.ingredients || [];
+      var left = ings.filter(function (ing) { return keyOf(ing) !== key; });
+      if (left.length !== ings.length) props.onSaveDay(Object.assign({}, item, { ingredients: left }));
+    }
+    if (checkedKeys.indexOf(key) !== -1) persist(checkedKeys.filter(function (k) { return k !== key; }), extras, home);
   }
   function resetChecks() { persist([], extras.map(function (x) { return Object.assign({}, x, { checked: false }); }), home); }
 
@@ -427,6 +441,12 @@ function ShoppingView(props) {
       (onRemove && !arrows) ? e('button', { onClick: onRemove, className: 'text-xs shrink-0', style: { color: 'var(--danger)' } }, '✕') : null
     );
   }
+  function doneHeader(key, count) {
+    return e('button', { key: key, onClick: function () { setDoneOpen(!doneOpen); }, className: 'flex items-center gap-1 text-xs pt-3 pb-1 text-left', style: { color: 'var(--text-tertiary)' } },
+      e('span', {}, doneOpen ? '▾' : '▸'),
+      e('span', {}, 'Al in het mandje (' + count + ')')
+    );
+  }
   function heading(label) {
     return e('div', { key: 'h-' + label, className: 'text-xs font-semibold pt-3 pb-0.5', style: { color: 'var(--text-secondary)' } }, label);
   }
@@ -452,7 +472,7 @@ function ShoppingView(props) {
         return;
       }
       var i = prodItems.indexOf(it);
-      mainRows.push(rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }, null, function () { setSheetKey(it.key); },
+      mainRows.push(rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }, function () { removeProduct(it.key); }, function () { setSheetKey(it.key); },
         reorder ? { up: i > 0 ? function () { moveItem(prodItems, i, -1); } : null, down: i < prodItems.length - 1 ? function () { moveItem(prodItems, i, 1); } : null } : null));
     });
   });
@@ -467,11 +487,11 @@ function ShoppingView(props) {
       reorder ? e('p', { className: 'text-xs pt-1', style: { color: 'var(--text-tertiary)' } }, 'Gebruik de pijltjes. De volgorde wordt onthouden voor volgende weken.') : null,
       e('div', { className: 'flex flex-col' },
         mainRows,
-        done.length ? e('div', { key: 'done-h', className: 'text-xs pt-3 pb-1', style: { color: 'var(--text-tertiary)' } }, 'Al in het mandje') : null,
-        done.map(function (it) {
+        done.length ? doneHeader('done-h', done.length) : null,
+        done.length && doneOpen ? done.map(function (it) {
           if (it.isExtra) return rowEl(it.key, it.text, null, true, function () { toggleExtra(it.id); }, function () { removeExtra(it.id); }, null, null);
-          return rowEl('i-' + it.key, it.text, null, true, function () { toggleItem(it.key); }, null, null, null);
-        })
+          return rowEl('i-' + it.key, it.text, null, true, function () { toggleItem(it.key); }, function () { removeProduct(it.key); }, null, null);
+        }) : null
       )
     ),
     e(Card, { className: 'p-3.5' },
@@ -501,8 +521,8 @@ function ShoppingView(props) {
           g.items.forEach(function (x) { rows.push(rowEl('x-' + x.id, x.text, null, false, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }, null, null)); });
           return e('div', { key: 'xg-' + g.store, className: 'flex flex-col' }, rows);
         }),
-        doneExtras.length ? e('div', { key: 'xdone-h', className: 'text-xs pt-3 pb-1', style: { color: 'var(--text-tertiary)' } }, 'Al in het mandje') : null,
-        doneExtras.map(function (x) { return rowEl('x-' + x.id, x.text + (x.store ? ' (' + x.store + ')' : ''), null, true, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }, null, null); })
+        doneExtras.length ? doneHeader('xdone-h', doneExtras.length) : null,
+        doneExtras.length && doneOpen ? doneExtras.map(function (x) { return rowEl('x-' + x.id, x.text + (x.store ? ' (' + x.store + ')' : ''), null, true, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }, null, null); }) : null
       )
     ) : null,
     hidden.length ? e(Card, { className: 'p-3.5' },
@@ -596,7 +616,7 @@ export function MealsTab(props) {
       e(KebabMenu, { actions: [{ label: 'Wis deze week', danger: true, confirm: true, onClick: clearWeek }] })
     ) : null,
     view === 'plan' ? e(PlanView, { monday: monday, plan: plan, onOpenDay: setOpenDay }) : null,
-    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts }) : null,
+    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts, onSaveDay: props.saveMealDay }) : null,
     view === 'meals' ? e(LibraryView, { meals: meals, onNew: function () { setMealModal('new'); }, onEdit: function (m) { setMealModal(m); } }) : null,
     openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, defaultGuests: lastGuests(plan), freezerNames: freezerNames.slice(0, 8), onClose: function () { setOpenDay(null); },
       onSave: saveDay, onClear: function (d) { props.clearMealDay(d); setOpenDay(null); } }) : null,

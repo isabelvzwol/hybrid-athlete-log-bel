@@ -101,18 +101,27 @@ export async function dbDeleteEntry(id) {
 function strengthLogFromRow(row) {
   return {
     id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr,
-    warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes, durationMin: row.duration_minutes
+    warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes,
+    warmupHr: row.warmup_hr != null ? row.warmup_hr : null,
+    durationMin: row.duration_minutes
   };
 }
 function strengthLogToRow(log, userId) {
-  return {
+  var row = {
     id: log.id, user_id: userId, date: log.date, template: log.template || null, exercises: log.exercises || [], hr: log.hr,
     warmup_type: log.warmupType || null, warmup_minutes: log.warmupMinutes != null ? log.warmupMinutes : null,
     duration_minutes: log.durationMin != null ? log.durationMin : null
   };
+  // De kolom warmup_hr wordt alleen meegestuurd als er een waarde is, zodat
+  // opslaan zonder WU-hartslag ook werkt als de SQL-migratie nog niet is gedraaid.
+  if (log.warmupHr != null) row.warmup_hr = log.warmupHr;
+  return row;
 }
 export async function dbInsertStrengthLog(userId, log) {
   var { error } = await supabase.from('strength_logs').insert(strengthLogToRow(log, userId));
+  // 23505 = deze log (zelfde id) staat er al: een eerdere poging is dus wel
+  // aangekomen. Dat telt als gelukt, zodat opnieuw proberen nooit dubbel opslaat.
+  if (error && error.code === '23505') return;
   assertNoError('krachttraining opslaan', error);
 }
 

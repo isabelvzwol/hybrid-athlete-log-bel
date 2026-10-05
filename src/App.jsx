@@ -22,6 +22,29 @@ import { SearchModal, SettingsModal, AnnualRecapModal } from './screens/SearchAn
 import { LogTrainingModal } from './components/scheduling.jsx';
 var e = React.createElement;
 
+/* Het concept van een krachtworkout (ingevulde sets, hartslag, enz.) wordt
+   per schema bewaard, in het geheugen van de app én op het apparaat zelf, zodat
+   het niet kwijtraakt als je van tab wisselt of de app sluit. Concepten ouder
+   dan 7 dagen worden weggegooid. */
+function strengthDraftKey(userId) { return 'hal-strength-drafts-' + userId; }
+function loadStrengthDrafts(userId) {
+  try {
+    var raw = window.localStorage.getItem(strengthDraftKey(userId));
+    if (!raw) return {};
+    var all = JSON.parse(raw) || {};
+    var cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+    var out = {};
+    Object.keys(all).forEach(function (k) { if (all[k] && all[k].updatedAt && all[k].updatedAt > cutoff) out[k] = all[k]; });
+    return out;
+  } catch (err) { return {}; }
+}
+function saveStrengthDrafts(userId, drafts) {
+  try {
+    if (Object.keys(drafts).length) window.localStorage.setItem(strengthDraftKey(userId), JSON.stringify(drafts));
+    else window.localStorage.removeItem(strengthDraftKey(userId));
+  } catch (err) { /* geen opslag beschikbaar: concept blijft dan alleen in het geheugen */ }
+}
+
 function AppInner(props) {
   var session = props.session;
   var userId = session.user.id;
@@ -35,6 +58,8 @@ function AppInner(props) {
   var st6 = useState(false); var recapOpen = st6[0], setRecapOpen = st6[1];
   var st7 = useState(false); var dbError = st7[0], setDbError = st7[1];
   var st8 = useState(''); var criticalErrorMsg = st8[0], setCriticalErrorMsg = st8[1];
+  var stTpl = useState(null); var krachtTemplateId = stTpl[0], setKrachtTemplateId = stTpl[1];
+  var stDrafts = useState(function () { return loadStrengthDrafts(userId); }); var strengthDrafts = stDrafts[0], setStrengthDrafts = stDrafts[1];
 
   function loadAll() {
     return db.fetchAllData(userId).then(function (data) {
@@ -90,7 +115,7 @@ function AppInner(props) {
       // eslint-disable-next-line no-console
       console.error(err);
       setDbError(true);
-      setCriticalErrorMsg((err && err.message) ? err.message : 'onbekende fout');
+      setCriticalErrorMsg(((err && err.message) ? err.message : 'onbekende fout') + (rollback ? ' De wijziging is daarom teruggezet.' : ''));
       if (rollback) rollback();
     });
   }
@@ -142,6 +167,62 @@ function AppInner(props) {
   function deleteEntry(id) { setState(function (p) { return Object.assign({}, p, { scheduleEntries: p.scheduleEntries.filter(function (x) { return x.id !== id; }) }); }); track(db.dbDeleteEntry(id)); }
 
   function addStrengthLog(log) { setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.concat([log]) }); }); track(db.dbInsertStrengthLog(userId, log)); }
+
+  /* Concepten van krachtworkouts (zie bovenaan dit bestand). */
+  function patchStrengthDraft(templateId, patch) {
+    setStrengthDrafts(function (p) {
+      var n = Object.assign({}, p);
+      n[templateId] = Object.assign({}, p[templateId] || {}, patch, { updatedAt: Date.now() });
+      saveStrengthDrafts(userId, n);
+      return n;
+    });
+  }
+  function clearStrengthDraft(templateId) {
+    setStrengthDrafts(function (p) {
+      var n = Object.assign({}, p); delete n[templateId];
+      saveStrengthDrafts(userId, n);
+      return n;
+    });
+  }
+  /* Slaat een krachtworkout op. Eerst de database; PAS als dat gelukt is
+     verdwijnt het concept en verschijnt de workout in de lijst. Mislukt het,
+     dan blijft alles wat je had ingevuld staan en zie je een foutmelding. De
+     bijbehorende training in Schema wordt daarna afgevinkt. */
+  function saveStrengthWorkout(log, entryId, templateId) {
+    return db.dbInsertStrengthLog(userId, log).then(function () {
+      setState(function (p) {
+        var has = p.strengthLogs.some(function (x) { return x.id === log.id; });
+        return Object.assign({}, p, { strengthLogs: has ? p.strengthLogs.map(function (x) { return x.id === log.id ? log : x; }) : p.strengthLogs.concat([log]) });
+      });
+      setDbError(false);
+      if (templateId) clearStrengthDraft(templateId);
+      if (entryId) {
+        var existing = state.scheduleEntries.find(function (x) { return x.id === entryId; });
+        var prevActual = existing && existing.actual ? existing.actual : {};
+        applyEntryPatch(entryId, { completed: true, actual: Object.assign({}, prevActual, {
+          hr: log.hr, durationMin: log.durationMin, warmupType: log.warmupType, warmupMinutes: log.warmupMinutes, warmupHr: log.warmupHr, strengthLogId: log.id
+        }) });
+      }
+    }).catch(function (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      setCriticalErrorMsg('Je krachtworkout is niet opgeslagen (' + ((err && err.message) ? err.message : 'onbekende fout') + '). Alles wat je had ingevuld staat nog in de Kracht-tab, probeer het daar opnieuw.');
+      throw err;
+    });
+  }
+  /* Vanuit Schema/Home/Zoeken: start een geplande krachttraining in de Kracht-tab. */
+  function startStrengthFromEntry(entry) {
+    var t = (state.strengthTemplates || []).find(function (x) { return x.name === entry.type; });
+    if (!t) return;
+    setKrachtTemplateId(t.id);
+    patchStrengthDraft(t.id, { date: entry.date, entryId: entry.id });
+    setTab('kracht');
+  }
+  useEffect(function () {
+    function onStart(ev) { if (ev && ev.detail) startStrengthFromEntry(ev.detail); }
+    window.addEventListener('hal-start-strength', onStart);
+    return function () { window.removeEventListener('hal-start-strength', onStart); };
+  });
   function addStrengthTemplate(t) { setState(function (p) { return Object.assign({}, p, { strengthTemplates: p.strengthTemplates.concat([t]) }); }); track(db.dbInsertStrengthTemplate(userId, t)); }
   function updateStrengthTemplate(patch) {
     var merged = null;
@@ -298,7 +379,7 @@ function AppInner(props) {
   var content;
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog });
-  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
+  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
   else if (tab === 'prs') content = e(PRTab, { state: state, addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs });
@@ -306,7 +387,7 @@ function AppInner(props) {
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
     criticalErrorMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: 'var(--danger)', color: '#2A0E0E' } },
-      e('span', { className: 'flex-1' }, '⚠️ Opslaan is niet gelukt: ' + criticalErrorMsg + ' De wijziging is daarom teruggezet.'),
+      e('span', { className: 'flex-1' }, '⚠️ Opslaan is niet gelukt: ' + criticalErrorMsg),
       e('button', { onClick: function () { setCriticalErrorMsg(''); }, style: { color: '#2A0E0E', fontWeight: 700 } }, '✕')
     ) : dbError ? e('div', { className: 'sticky top-0 z-50 px-4 py-2.5 text-center text-xs font-semibold', style: { background: 'var(--danger)', color: '#2A0E0E' } },
       '⚠️ Wijzigingen worden niet opgeslagen! Controleer je internetverbinding en ververs de pagina.'

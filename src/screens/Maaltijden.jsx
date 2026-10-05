@@ -5,11 +5,26 @@
    ene dag aanpassen (bv. sperziebonen i.p.v. snijbonen) zonder je bewaarde
    maaltijd te veranderen. Uit alle geplande maaltijden van de week rolt een
    boodschappenlijst. Hoeveelheden worden niet bijgehouden: een ingrediënt is
-   gewoon een regel tekst. */
+   gewoon een regel tekst.
+   Per product onthoudt de app de winkel, de plek in je boodschappenvolgorde en
+   of je het altijd in huis hebt (tabel meal_products). Dat geldt elke week. */
 import React, { useState } from 'react';
 import { Card, Button, Field, TextInput, Modal, SegTabs, ConfirmInline, KebabMenu } from '../components/ui.jsx';
 import { uid, getMonday, todayISO, addDays, formatDateShort, isoWeekNumber, WEEKDAYS_FULL, toDate } from '../lib/helpers.js';
 var e = React.createElement;
+
+var FOOD_STORES = ['AH', 'Lidl', 'Jumbo', 'Anders'];
+var OTHER_STORES = ['Kruidvat', 'Etos', 'Anders'];
+var FIXED_GUESTS = ['Papa', 'Mart', 'Vriendinnen'];
+
+function chipStyle(active) {
+  return active ? { background: 'var(--sage-bg)', color: 'var(--sage-strong)' } : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' };
+}
+function lastGuests(plan) {
+  var best = null;
+  plan.forEach(function (x) { if (x.kind === 'meal' && x.guests && (!best || x.date > best.date)) best = x; });
+  return best ? best.guests : [];
+}
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function dayLabel(iso) { return cap(WEEKDAYS_FULL[toDate(iso).getDay()]) + ' ' + formatDateShort(iso); }
@@ -49,10 +64,16 @@ function weekIngredients(plan, monday) {
 function DinnerModal(props) {
   var item = props.item;
   var meals = props.meals;
-  var stKind = useState(item ? item.kind : 'meal'); var kind = stKind[0], setKind = stKind[1];
+  // Oude "Niet thuis"-dagen tellen voortaan als "Buiten de deur".
+  var stKind = useState(item ? (item.kind === 'skip' ? 'out' : item.kind) : 'meal'); var kind = stKind[0], setKind = stKind[1];
   var stName = useState(item && item.kind === 'meal' ? item.name || '' : ''); var name = stName[0], setName = stName[1];
   var stIng = useState(item && item.kind === 'meal' ? (item.ingredients || []).join('\n') : ''); var ingText = stIng[0], setIngText = stIng[1];
-  var stPersons = useState(item && item.persons ? item.persons : 2); var persons = stPersons[0], setPersons = stPersons[1];
+  var initialGuests = item ? (item.kind === 'meal' ? item.guests || [] : []) : (props.defaultGuests || []);
+  var stFixed = useState(initialGuests.filter(function (g) { return FIXED_GUESTS.indexOf(g) !== -1; })); var fixed = stFixed[0], setFixed = stFixed[1];
+  var otherInit = initialGuests.filter(function (g) { return FIXED_GUESTS.indexOf(g) === -1; });
+  var stOtherOn = useState(otherInit.length > 0); var otherOn = stOtherOn[0], setOtherOn = stOtherOn[1];
+  var stOtherText = useState(otherInit.join(', ')); var otherText = stOtherText[0], setOtherText = stOtherText[1];
+  var stPersons = useState(item && item.persons ? item.persons : 1 + initialGuests.length); var persons = stPersons[0], setPersons = stPersons[1];
   var stNote = useState(item && item.kind !== 'meal' ? item.note || '' : ''); var note = stNote[0], setNote = stNote[1];
   var stQuery = useState(''); var query = stQuery[0], setQuery = stQuery[1];
   var stMealId = useState(item ? item.mealId || null : null); var mealId = stMealId[0], setMealId = stMealId[1];
@@ -63,16 +84,30 @@ function DinnerModal(props) {
   var trimmedName = name.trim();
   var matchMeal = trimmedName ? meals.find(function (m) { return m.name.toLowerCase() === trimmedName.toLowerCase(); }) : null;
   var libChecked = libOverride !== null ? libOverride : !matchMeal;
+  var alone = fixed.length === 0 && !otherOn;
 
   function pick(m) { setName(m.name); setIngText((m.ingredients || []).join('\n')); setMealId(m.id); setLibOverride(null); setQuery(''); }
+  function selectAlone() { setFixed([]); setOtherOn(false); setOtherText(''); setPersons(1); }
+  function toggleFixed(g) {
+    var next = fixed.indexOf(g) === -1 ? fixed.concat([g]) : fixed.filter(function (x) { return x !== g; });
+    setFixed(next);
+    setPersons(1 + next.length + (otherOn ? 1 : 0));
+  }
+  function toggleOther() {
+    var on = !otherOn;
+    setOtherOn(on);
+    setPersons(1 + fixed.length + (on ? 1 : 0));
+  }
   function save() {
     if (kind === 'meal' && !trimmedName) return;
+    var guests = kind === 'meal' ? fixed.concat(otherOn ? [otherText.trim() || 'Anders'] : []) : [];
     var entry = {
       id: item ? item.id : uid(), date: props.date, kind: kind,
       mealId: kind === 'meal' ? (matchMeal ? matchMeal.id : mealId) : null,
       name: kind === 'meal' ? trimmedName : '',
       ingredients: kind === 'meal' ? parseLines(ingText) : [],
       persons: kind === 'meal' ? persons : null,
+      guests: guests,
       note: kind === 'meal' ? '' : note.trim()
     };
     props.onSave(entry, kind === 'meal' ? { saveNew: !matchMeal && libChecked, updateExisting: (matchMeal && libChecked) ? matchMeal : null } : null);
@@ -80,21 +115,31 @@ function DinnerModal(props) {
 
   return e(Modal, { title: 'Avondeten ' + dayLabel(props.date).toLowerCase(), onClose: props.onClose },
     e('div', { className: 'flex flex-col gap-3' },
-      e(SegTabs, { value: kind, onChange: setKind, options: [{ value: 'meal', label: '🍳 Koken' }, { value: 'out', label: '🍽️ Uit eten' }, { value: 'skip', label: '🚫 Niet thuis' }] }),
+      e(SegTabs, { value: kind, onChange: setKind, options: [{ value: 'meal', label: '🍳 Koken' }, { value: 'out', label: '🚪 Buiten de deur' }] }),
       kind === 'meal' ? e('div', { className: 'flex flex-col gap-3' },
         meals.length ? e('div', { className: 'flex flex-col gap-2' },
           e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Kies uit je eigen maaltijden'),
           meals.length > 6 ? e(TextInput, { placeholder: 'Zoek in je maaltijden', value: query, onChange: function (ev) { setQuery(ev.target.value); } }) : null,
           e('div', { className: 'flex gap-2 flex-wrap' }, matches.map(function (m) {
             var active = matchMeal && matchMeal.id === m.id;
-            return e('button', { key: m.id, onClick: function () { pick(m); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium',
-              style: active ? { background: 'var(--sage-bg)', color: 'var(--sage-strong)' } : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' } }, m.name);
+            return e('button', { key: m.id, onClick: function () { pick(m); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(active) }, m.name);
           })),
           !matches.length ? e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Geen maaltijd gevonden.') : null
         ) : e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Je hebt nog geen eigen maaltijden. Vul hieronder een maaltijd in en bewaar hem voor de volgende keer.'),
         e(Field, { label: 'Maaltijd' }, e(TextInput, { value: name, onChange: function (ev) { setName(ev.target.value); }, placeholder: 'bv. Stamppot met snijbonen' })),
         e(Field, { label: 'Boodschappen voor deze maaltijd (één per regel)' }, e('textarea', { rows: 5, value: ingText, onChange: function (ev) { setIngText(ev.target.value); }, placeholder: 'snijbonen\naardappelen\nrookworst' })),
         e('p', { className: 'text-xs -mt-1', style: { color: 'var(--text-tertiary)' } }, 'Dit geldt alleen voor deze dag. Wissel je sperziebonen voor snijbonen, dan blijft je bewaarde maaltijd gewoon staan.'),
+        e('div', { className: 'flex flex-col gap-2' },
+          e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Wie eet er mee?'),
+          e('div', { className: 'flex gap-2 flex-wrap' },
+            e('button', { onClick: selectAlone, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(alone) }, 'Alleen'),
+            FIXED_GUESTS.map(function (g) {
+              return e('button', { key: g, onClick: function () { toggleFixed(g); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(fixed.indexOf(g) !== -1) }, g);
+            }),
+            e('button', { onClick: toggleOther, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(otherOn) }, 'Anders')
+          ),
+          otherOn ? e(TextInput, { placeholder: 'Wie? (optioneel)', value: otherText, onChange: function (ev) { setOtherText(ev.target.value); } }) : null
+        ),
         e('div', { className: 'flex items-center justify-between rounded-xl px-3 py-2', style: { background: 'var(--bg-inset)' } },
           e('span', { className: 'text-sm' }, 'Aantal personen'),
           e('div', { className: 'flex items-center gap-3' },
@@ -105,10 +150,10 @@ function DinnerModal(props) {
         ),
         trimmedName ? e('button', { onClick: function () { setLibOverride(!libChecked); }, className: 'flex items-center gap-2 text-left' },
           e('span', { className: 'w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0', style: libChecked ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, libChecked ? '✓' : ''),
-          e('span', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, matchMeal ? 'Pas ook mijn bewaarde maaltijd "' + matchMeal.name + '" aan' : 'Bewaar in mijn maaltijden')
+          e('span', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, matchMeal ? 'Pas ook mijn bewaarde maaltijd "' + matchMeal.name + '" aan' : 'Bewaar in mijn maaltijden (met boodschappen)')
         ) : null
-      ) : e(Field, { label: kind === 'out' ? 'Waar? (optioneel)' : 'Reden (optioneel)' },
-        e(TextInput, { value: note, onChange: function (ev) { setNote(ev.target.value); }, placeholder: kind === 'out' ? 'bv. Pizzeria met Sanne' : 'bv. Sporten en eten bij vrienden' })),
+      ) : e(Field, { label: 'Waar of bij wie? (optioneel)' },
+        e(TextInput, { value: note, onChange: function (ev) { setNote(ev.target.value); }, placeholder: 'bv. Pizzeria met Sanne, of bij Mart' })),
       e('div', { className: 'flex gap-2 mt-1' },
         e(Button, { className: 'flex-1', onClick: save, disabled: kind === 'meal' && !trimmedName }, 'Opslaan'),
         item ? e(ConfirmInline, { label: 'Leegmaken', onConfirm: function () { props.onClear(props.date); } }) : null
@@ -147,22 +192,20 @@ function PlanView(props) {
       var body;
       if (!item) {
         body = e('div', { className: 'text-sm', style: { color: 'var(--text-tertiary)' } }, '+ Kies avondeten');
-      } else if (item.kind === 'out') {
+      } else if (item.kind === 'out' || item.kind === 'skip') {
         body = e('div', {},
-          e('div', { className: 'text-sm font-semibold' }, '🍽️ Uit eten'),
-          item.note ? e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, item.note) : null
-        );
-      } else if (item.kind === 'skip') {
-        body = e('div', {},
-          e('div', { className: 'text-sm font-semibold' }, '🚫 Niet thuis'),
+          e('div', { className: 'text-sm font-semibold' }, '🚪 Buiten de deur'),
           item.note ? e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, item.note) : null
         );
       } else {
+        var guests = item.guests || [];
+        var withLine = guests.length ? 'Met ' + guests.join(', ') : (item.persons === 1 ? 'Alleen' : null);
         body = e('div', {},
           e('div', { className: 'flex items-center gap-2' },
             e('span', { className: 'text-sm font-semibold' }, item.name),
             item.persons ? e('span', { className: 'text-xs rounded-full px-2 py-0.5', style: { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' } }, item.persons + ' pers.') : null
           ),
+          withLine ? e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, withLine) : null,
           (item.ingredients && item.ingredients.length) ? e('div', { className: 'text-xs truncate', style: { color: 'var(--text-tertiary)' } }, item.ingredients.join(', ')) : null
         );
       }
@@ -174,80 +217,264 @@ function PlanView(props) {
   );
 }
 
+/* Sorteert producten op de onthouden volgorde; producten zonder plek komen
+   onderaan, in de volgorde waarin ze voorkomen. */
+function sortByOrder(items) {
+  return items.map(function (it, i) { return { it: it, i: i }; }).sort(function (a, b) {
+    var sa = a.it.sort == null ? Infinity : a.it.sort;
+    var sb = b.it.sort == null ? Infinity : b.it.sort;
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return a.i - b.i;
+  }).map(function (x) { return x.it; });
+}
+
+function ProductModal(props) {
+  var item = props.item;
+  return e(Modal, { title: item.text, onClose: props.onClose },
+    e('div', { className: 'flex flex-col gap-4' },
+      e('div', { className: 'flex flex-col gap-2' },
+        e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Bij welke winkel haal je dit? (geldt elke week)'),
+        e('div', { className: 'flex gap-2 flex-wrap' },
+          e('button', { onClick: function () { props.onStore(''); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(!item.store) }, 'Geen vaste winkel'),
+          FOOD_STORES.map(function (st) {
+            return e('button', { key: st, onClick: function () { props.onStore(st); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(item.store === st) }, st);
+          })
+        )
+      ),
+      e('div', { className: 'flex flex-col gap-2' },
+        e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Heb je dit al thuis?'),
+        e(Button, { variant: 'ghost', onClick: props.onHomeWeek }, 'Heb ik al, alleen deze week'),
+        e(Button, { variant: 'ghost', onClick: props.onHomeAlways }, 'Heb ik altijd in huis'),
+        e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Je vindt ze onderaan de lijst terug onder "Thuis", zodat je ze weer op de lijst kunt zetten.')
+      ),
+      e(Button, { onClick: props.onClose }, 'Klaar')
+    )
+  );
+}
+
 function ShoppingView(props) {
   var monday = props.monday;
-  var row = props.shopping || { checked: [], extras: [] };
-  var items = weekIngredients(props.plan, monday);
+  var row = props.shopping || { checked: [], extras: [], home: [] };
+  var products = props.products || [];
   var stNew = useState(''); var newText = stNew[0], setNewText = stNew[1];
+  var stNewStore = useState(''); var newStore = stNewStore[0], setNewStore = stNewStore[1];
   var stCopied = useState(false); var copied = stCopied[0], setCopied = stCopied[1];
-  var checkedSet = {};
-  (row.checked || []).forEach(function (k) { checkedSet[k] = true; });
-  var extras = row.extras || [];
+  var stReorder = useState(false); var reorder = stReorder[0], setReorder = stReorder[1];
+  var stSheet = useState(null); var sheetKey = stSheet[0], setSheetKey = stSheet[1];
+  var stHidden = useState(false); var showHidden = stHidden[0], setShowHidden = stHidden[1];
 
-  function persist(checkedKeys, nextExtras) { props.onSave(monday, checkedKeys, nextExtras); }
+  var checkedKeys = row.checked || [];
+  var extras = row.extras || [];
+  var home = row.home || [];
+  var checkedSet = {};
+  checkedKeys.forEach(function (k) { checkedSet[k] = true; });
+  var prodMap = {};
+  products.forEach(function (p) { prodMap[p.key] = p; });
+  var maxSort = 0;
+  products.forEach(function (p) { if (p.sortOrder > maxSort) maxSort = p.sortOrder; });
+
+  var all = weekIngredients(props.plan, monday).map(function (it) {
+    var p = prodMap[it.key];
+    return { key: it.key, text: it.text, days: it.days, store: p ? p.store : '', sort: p ? p.sortOrder : null, permHome: !!(p && p.atHome), weekHome: home.indexOf(it.key) !== -1 };
+  });
+  var visible = all.filter(function (it) { return !it.permHome && !it.weekHome; });
+  var hidden = all.filter(function (it) { return it.permHome || it.weekHome; });
+  var hasStores = visible.some(function (it) { return it.store; });
+
+  function persist(nextChecked, nextExtras, nextHome) { props.onSave(monday, nextChecked, nextExtras, nextHome); }
   function toggleItem(key) {
-    var next = (row.checked || []).slice();
+    var next = checkedKeys.slice();
     var i = next.indexOf(key);
     if (i === -1) next.push(key); else next.splice(i, 1);
-    persist(next, extras);
+    persist(next, extras, home);
   }
-  function toggleExtra(id) { persist(row.checked || [], extras.map(function (x) { return x.id === id ? Object.assign({}, x, { checked: !x.checked }) : x; })); }
-  function removeExtra(id) { persist(row.checked || [], extras.filter(function (x) { return x.id !== id; })); }
+  function toggleExtra(id) { persist(checkedKeys, extras.map(function (x) { return x.id === id ? Object.assign({}, x, { checked: !x.checked }) : x; }), home); }
+  function removeExtra(id) { persist(checkedKeys, extras.filter(function (x) { return x.id !== id; }), home); }
   function addExtra() {
     var t = newText.trim();
     if (!t) return;
-    persist(row.checked || [], extras.concat([{ id: uid(), text: t, checked: false }]));
+    persist(checkedKeys, extras.concat([{ id: uid(), text: t, checked: false, store: newStore }]), home);
     setNewText('');
   }
-  function resetChecks() { persist([], extras.map(function (x) { return Object.assign({}, x, { checked: false }); })); }
+  function resetChecks() { persist([], extras.map(function (x) { return Object.assign({}, x, { checked: false }); }), home); }
+
+  /* Alle producten van deze week die de app nog niet kent krijgen nu een plek
+     onderaan, in de volgorde waarin ze op het scherm staan. Zo schuift er niets
+     om als je daarna één product instelt. */
+  function baseProducts() {
+    var map = {};
+    var next = maxSort;
+    all.forEach(function (it) {
+      var p = prodMap[it.key];
+      if (p) map[it.key] = Object.assign({}, p);
+      else { next += 10; map[it.key] = { key: it.key, name: it.text, store: '', sortOrder: next, atHome: false, isNew: true }; }
+    });
+    return map;
+  }
+  function saveProduct(key, patch) {
+    var map = baseProducts();
+    var target = map[key];
+    Object.assign(target, patch);
+    var changed = Object.keys(map).filter(function (k) { return k === key || map[k].isNew; }).map(function (k) { var o = Object.assign({}, map[k]); delete o.isNew; return o; });
+    props.onSaveProducts(changed);
+  }
+  function moveItem(group, i, dir) {
+    var j = i + dir;
+    if (j < 0 || j >= group.length) return;
+    var slots = group.filter(function (it) { return it.sort != null; }).map(function (it) { return it.sort; }).sort(function (a, b) { return a - b; });
+    var vals = [];
+    var next = maxSort;
+    for (var k = 0; k < group.length; k++) {
+      if (k < slots.length) vals.push(slots[k]); else { next += 10; vals.push(next); }
+    }
+    var order = group.slice();
+    var tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    var list = [];
+    order.forEach(function (it, idx) {
+      var p = prodMap[it.key];
+      if (!p || p.sortOrder !== vals[idx]) list.push({ key: it.key, name: p ? p.name : it.text, store: p ? p.store : '', sortOrder: vals[idx], atHome: p ? p.atHome : false });
+    });
+    if (list.length) props.onSaveProducts(list);
+  }
+  function backOnList(it) {
+    if (it.weekHome) persist(checkedKeys, extras, home.filter(function (k) { return k !== it.key; }));
+    if (it.permHome) { var p = prodMap[it.key]; props.onSaveProducts([{ key: it.key, name: p.name, store: p.store, sortOrder: p.sortOrder, atHome: false }]); }
+  }
+
   function copyList() {
     var lines = [];
-    items.forEach(function (it) { if (!checkedSet[it.key]) lines.push('- ' + it.text); });
-    extras.forEach(function (x) { if (!x.checked) lines.push('- ' + x.text); });
-    var text = 'Boodschappen week ' + isoWeekNumber(monday) + ':\n' + lines.join('\n');
+    var open = visible.filter(function (it) { return !checkedSet[it.key]; });
+    storeGroups(open).forEach(function (g) {
+      if (!g.items.length) return;
+      if (hasStores) lines.push((g.store || 'Gewone boodschappen') + ':');
+      g.items.forEach(function (it) { lines.push('- ' + it.text); });
+      lines.push('');
+    });
+    var openExtras = extras.filter(function (x) { return !x.checked; });
+    extraGroups(openExtras).forEach(function (g) {
+      if (!g.items.length) return;
+      lines.push((g.store || 'Overig') + ':');
+      g.items.forEach(function (x) { lines.push('- ' + x.text); });
+      lines.push('');
+    });
+    var text = 'Boodschappen week ' + isoWeekNumber(monday) + ':\n' + lines.join('\n').trim();
     try {
       navigator.clipboard.writeText(text).then(function () { setCopied(true); setTimeout(function () { setCopied(false); }, 2000); }).catch(function () {});
     } catch (err) { /* kopiëren niet beschikbaar op dit apparaat */ }
   }
 
-  function rowEl(key, text, sub, checked, onToggle, onRemove) {
+  function storeGroups(items) {
+    var order = [''].concat(FOOD_STORES);
+    return order.map(function (st) {
+      return { store: st, items: sortByOrder(items.filter(function (it) { return (it.store || '') === st; })) };
+    });
+  }
+  function extraGroups(items) {
+    var order = [''].concat(OTHER_STORES);
+    return order.map(function (st) {
+      return { store: st, items: items.filter(function (x) { return (x.store || '') === st; }) };
+    });
+  }
+
+  function rowEl(key, text, sub, checked, onToggle, onRemove, onOpen, arrows) {
     return e('div', { key: key, className: 'flex items-center gap-3 py-2' },
-      e('button', { onClick: onToggle, className: 'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+      arrows ? e('div', { className: 'flex gap-1 shrink-0' },
+        e('button', { onClick: arrows.up, disabled: !arrows.up, className: 'w-7 h-7 rounded-lg text-xs', style: { background: 'var(--bg-elevated)', opacity: arrows.up ? 1 : 0.3 } }, '▲'),
+        e('button', { onClick: arrows.down, disabled: !arrows.down, className: 'w-7 h-7 rounded-lg text-xs', style: { background: 'var(--bg-elevated)', opacity: arrows.down ? 1 : 0.3 } }, '▼')
+      ) : e('button', { onClick: onToggle, className: 'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
         style: checked ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, checked ? '✓' : ''),
-      e('div', { className: 'flex-1 min-w-0' },
+      e('div', { className: 'flex-1 min-w-0' + (onOpen && !arrows ? ' cursor-pointer' : ''), onClick: (onOpen && !arrows) ? onOpen : undefined },
         e('div', { className: 'text-sm', style: checked ? { textDecoration: 'line-through', color: 'var(--text-tertiary)' } : {} }, text),
         sub ? e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, sub) : null
       ),
-      onRemove ? e('button', { onClick: onRemove, className: 'text-xs shrink-0', style: { color: 'var(--danger)' } }, '✕') : null
+      (onRemove && !arrows) ? e('button', { onClick: onRemove, className: 'text-xs shrink-0', style: { color: 'var(--danger)' } }, '✕') : null
     );
   }
+  function heading(label) {
+    return e('div', { key: 'h-' + label, className: 'text-xs font-semibold pt-3 pb-0.5', style: { color: 'var(--text-secondary)' } }, label);
+  }
 
-  var open = items.filter(function (it) { return !checkedSet[it.key]; });
-  var done = items.filter(function (it) { return checkedSet[it.key]; });
-  var openExtras = extras.filter(function (x) { return !x.checked; });
+  var open = visible.filter(function (it) { return !checkedSet[it.key]; });
+  var done = sortByOrder(visible.filter(function (it) { return checkedSet[it.key]; }));
+  var openGroups = storeGroups(open);
+  var extraOpenGroups = extraGroups(extras.filter(function (x) { return !x.checked; }));
   var doneExtras = extras.filter(function (x) { return x.checked; });
-  var empty = !items.length && !extras.length;
+  var empty = !all.length && !extras.length;
+  var sheetItem = sheetKey ? all.find(function (it) { return it.key === sheetKey; }) : null;
+  var extraHasStores = extras.some(function (x) { return x.store; });
+
+  var mainRows = [];
+  openGroups.forEach(function (g) {
+    if (!g.items.length) return;
+    if (hasStores) mainRows.push(heading(g.store || 'Gewone boodschappen'));
+    g.items.forEach(function (it, i) {
+      mainRows.push(rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }, null, function () { setSheetKey(it.key); },
+        reorder ? { up: i > 0 ? function () { moveItem(g.items, i, -1); } : null, down: i < g.items.length - 1 ? function () { moveItem(g.items, i, 1); } : null } : null));
+    });
+  });
 
   return e('div', { className: 'flex flex-col gap-3' },
-    e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'De lijst komt uit je geplande maaltijden en past zich aan als je de planning wijzigt. Wil je een ingrediënt wisselen, pas dat dan aan bij de maaltijd van die dag.'),
+    e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'De lijst komt uit je geplande maaltijden. Tik op een product voor de winkel of om aan te geven dat je het al thuis hebt. Wil je iets wisselen, pas het dan aan bij de maaltijd van die dag.'),
     e(Card, { className: 'p-3.5' },
       empty ? e('div', { className: 'text-sm py-2', style: { color: 'var(--text-tertiary)' } }, 'Nog niets te kopen. Plan eerst maaltijden met boodschappen, of voeg hieronder zelf iets toe.') : null,
-      e('div', { className: 'flex flex-col', style: { } },
-        open.map(function (it) { return rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }); }),
-        openExtras.map(function (x) { return rowEl('x-' + x.id, x.text, 'extra', false, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }); }),
-        (done.length || doneExtras.length) ? e('div', { className: 'text-xs pt-2 pb-1', style: { color: 'var(--text-tertiary)' } }, 'Al in het mandje') : null,
-        done.map(function (it) { return rowEl('i-' + it.key, it.text, null, true, function () { toggleItem(it.key); }); }),
-        doneExtras.map(function (x) { return rowEl('x-' + x.id, x.text, null, true, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }); })
+      visible.length > 1 ? e('div', { className: 'flex justify-end' },
+        e('button', { onClick: function () { setReorder(!reorder); }, className: 'text-xs font-medium', style: { color: 'var(--slate)' } }, reorder ? '✓ Klaar met volgorde' : '↕ Volgorde aanpassen')
+      ) : null,
+      reorder ? e('p', { className: 'text-xs pt-1', style: { color: 'var(--text-tertiary)' } }, 'Gebruik de pijltjes. De volgorde wordt onthouden voor volgende weken.') : null,
+      e('div', { className: 'flex flex-col' },
+        mainRows,
+        done.length ? e('div', { key: 'done-h', className: 'text-xs pt-3 pb-1', style: { color: 'var(--text-tertiary)' } }, 'Al in het mandje') : null,
+        done.map(function (it) { return rowEl('i-' + it.key, it.text, null, true, function () { toggleItem(it.key); }, null, null, null); })
+      )
+    ),
+    hidden.length ? e(Card, { className: 'p-3.5' },
+      e('button', { onClick: function () { setShowHidden(!showHidden); }, className: 'w-full flex items-center justify-between text-sm font-medium', style: { color: 'var(--text-secondary)' } },
+        e('span', {}, '🏠 Thuis (' + hidden.length + ' verborgen)'),
+        e('span', { className: 'text-xs' }, showHidden ? 'Verberg' : 'Toon')
+      ),
+      showHidden ? e('div', { className: 'flex flex-col mt-1' }, hidden.map(function (it) {
+        return e('div', { key: 'hid-' + it.key, className: 'flex items-center gap-3 py-2' },
+          e('div', { className: 'flex-1 min-w-0' },
+            e('div', { className: 'text-sm' }, it.text),
+            e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, (it.permHome ? 'altijd thuis' : '') + (it.permHome && it.weekHome ? ' en ' : '') + (it.weekHome ? 'deze week thuis' : ''))
+          ),
+          e('button', { onClick: function () { backOnList(it); }, className: 'text-xs font-medium shrink-0', style: { color: 'var(--slate)' } }, 'Terug op lijst')
+        );
+      })) : null
+    ) : null,
+    e(Card, { className: 'p-3.5' },
+      e('div', { className: 'text-sm font-semibold' }, 'Extra en drogist'),
+      e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Alleen voor deze week, bijvoorbeeld iets van de Kruidvat of Etos.'),
+      e('div', { className: 'flex flex-col' },
+        extraOpenGroups.map(function (g) {
+          if (!g.items.length) return null;
+          var rows = [];
+          if (extraHasStores) rows.push(heading(g.store || 'Overig'));
+          g.items.forEach(function (x) { rows.push(rowEl('x-' + x.id, x.text, null, false, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }, null, null)); });
+          return e('div', { key: 'xg-' + g.store, className: 'flex flex-col' }, rows);
+        }),
+        doneExtras.length ? e('div', { key: 'xdone-h', className: 'text-xs pt-3 pb-1', style: { color: 'var(--text-tertiary)' } }, 'Al in het mandje') : null,
+        doneExtras.map(function (x) { return rowEl('x-' + x.id, x.text + (x.store ? ' (' + x.store + ')' : ''), null, true, function () { toggleExtra(x.id); }, function () { removeExtra(x.id); }, null, null); })
+      ),
+      e('div', { className: 'flex flex-col gap-2 mt-3' },
+        e(TextInput, { placeholder: 'Extra boodschap (bv. tandpasta)', value: newText, onChange: function (ev) { setNewText(ev.target.value); }, onKeyDown: function (ev) { if (ev.key === 'Enter') addExtra(); } }),
+        e('div', { className: 'flex gap-2 flex-wrap items-center' },
+          e('button', { onClick: function () { setNewStore(''); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(!newStore) }, 'Geen winkel'),
+          OTHER_STORES.map(function (st) {
+            return e('button', { key: st, onClick: function () { setNewStore(st); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(newStore === st) }, st);
+          }),
+          e(Button, { variant: 'ghost', className: 'ml-auto', onClick: addExtra, disabled: !newText.trim() }, '+ Toevoegen')
+        )
       )
     ),
     e('div', { className: 'flex gap-2' },
-      e(TextInput, { placeholder: 'Extra boodschap (bv. wc-papier)', value: newText, onChange: function (ev) { setNewText(ev.target.value); }, onKeyDown: function (ev) { if (ev.key === 'Enter') addExtra(); } }),
-      e(Button, { variant: 'ghost', onClick: addExtra }, '+ Toevoegen')
-    ),
-    e('div', { className: 'flex gap-2' },
       e(Button, { variant: 'ghost', className: 'flex-1', onClick: copyList, disabled: empty }, copied ? '✓ Gekopieerd' : 'Kopieer lijst'),
-      e(Button, { variant: 'ghost', onClick: resetChecks, disabled: !(row.checked || []).length && !extras.some(function (x) { return x.checked; }) }, 'Vinkjes wissen')
-    )
+      e(Button, { variant: 'ghost', onClick: resetChecks, disabled: !checkedKeys.length && !extras.some(function (x) { return x.checked; }) }, 'Vinkjes wissen')
+    ),
+    sheetItem ? e(ProductModal, { item: sheetItem, onClose: function () { setSheetKey(null); },
+      onStore: function (st) { saveProduct(sheetItem.key, { store: st }); },
+      onHomeWeek: function () { persist(checkedKeys, extras, home.concat([sheetItem.key])); setSheetKey(null); },
+      onHomeAlways: function () { saveProduct(sheetItem.key, { atHome: true }); setSheetKey(null); } }) : null
   );
 }
 
@@ -312,9 +539,9 @@ export function MealsTab(props) {
       e(KebabMenu, { actions: [{ label: 'Wis deze week', danger: true, confirm: true, onClick: clearWeek }] })
     ) : null,
     view === 'plan' ? e(PlanView, { monday: monday, plan: plan, onOpenDay: setOpenDay }) : null,
-    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), onSave: props.saveShopping }) : null,
+    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts }) : null,
     view === 'meals' ? e(LibraryView, { meals: meals, onNew: function () { setMealModal('new'); }, onEdit: function (m) { setMealModal(m); } }) : null,
-    openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, onClose: function () { setOpenDay(null); },
+    openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, defaultGuests: lastGuests(plan), onClose: function () { setOpenDay(null); },
       onSave: saveDay, onClear: function (d) { props.clearMealDay(d); setOpenDay(null); } }) : null,
     mealModal ? e(MealEditModal, { meal: mealModal === 'new' ? null : mealModal, onClose: function () { setMealModal(null); },
       onSave: function (m) { if (mealModal === 'new') props.addMeal(m); else props.updateMeal(m); setMealModal(null); },

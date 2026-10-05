@@ -183,8 +183,8 @@ function AppInner(props) {
   }
   function addHyroxRaceResult(r) { setState(function (p) { return Object.assign({}, p, { hyroxRaceResults: p.hyroxRaceResults.concat([r]) }); }); track(db.dbInsertHyroxRaceResult(userId, r)); }
   function addRunRaceResult(r) { setState(function (p) { return Object.assign({}, p, { runRaceResults: p.runRaceResults.concat([r]) }); }); track(db.dbInsertRunRaceResult(userId, r)); }
-  function setMood(mood) {
-    var t = todayISO();
+  function setMood(mood, date) {
+    var t = date || todayISO();
     setState(function (p) {
       var exists = p.moodLogs.some(function (m) { return m.date === t; });
       var logs = exists ? p.moodLogs.map(function (m) { return m.date === t ? Object.assign({}, m, { mood: mood }) : m; }) : p.moodLogs.concat([{ id: uid(), date: t, mood: mood }]);

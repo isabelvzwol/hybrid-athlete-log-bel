@@ -182,10 +182,10 @@ export async function dbDeleteMeal(id) {
    ingrediënten zijn een kopie van de maaltijd op het moment van plannen, zodat
    aanpassingen voor één dag de bewaarde maaltijd niet veranderen. */
 function mealPlanFromRow(row) {
-  return { id: row.id, date: row.date, kind: row.kind || 'meal', mealId: row.meal_id || null, name: row.name || '', ingredients: row.ingredients || [], persons: row.persons, note: row.note || '' };
+  return { id: row.id, date: row.date, kind: row.kind || 'meal', mealId: row.meal_id || null, name: row.name || '', ingredients: row.ingredients || [], persons: row.persons, guests: row.guests || [], note: row.note || '' };
 }
 function mealPlanToRow(x, userId) {
-  return { user_id: userId, date: x.date, kind: x.kind, meal_id: x.mealId || null, name: x.name || null, ingredients: x.ingredients || [], persons: x.persons != null ? x.persons : null, note: x.note || null };
+  return { user_id: userId, date: x.date, kind: x.kind, meal_id: x.mealId || null, name: x.name || null, ingredients: x.ingredients || [], persons: x.persons != null ? x.persons : null, guests: x.guests || [], note: x.note || null };
 }
 export async function dbUpsertMealPlan(userId, x) {
   var { error } = await supabase.from('meal_plan').upsert(mealPlanToRow(x, userId), { onConflict: 'user_id,date' });
@@ -196,14 +196,28 @@ export async function dbDeleteMealPlanDay(userId, date) {
   assertNoError('avondeten verwijderen', error);
 }
 
-/* ---------- meal_shopping (afvinkstatus en extra's per week) ---------- */
-function mealShoppingFromRow(row) { return { id: row.id, week: row.week, checked: row.checked || [], extras: row.extras || [] }; }
-export async function dbUpsertMealShopping(userId, week, checked, extras) {
+/* ---------- meal_shopping (afvinkstatus, extra's en "heb ik al" per week) ---------- */
+function mealShoppingFromRow(row) { return { id: row.id, week: row.week, checked: row.checked || [], extras: row.extras || [], home: row.home || [] }; }
+export async function dbUpsertMealShopping(userId, week, checked, extras, home) {
   var { error } = await supabase.from('meal_shopping').upsert(
-    { user_id: userId, week: week, checked: checked, extras: extras },
+    { user_id: userId, week: week, checked: checked, extras: extras, home: home || [] },
     { onConflict: 'user_id,week' }
   );
   assertNoError('boodschappenlijst opslaan', error);
+}
+
+/* ---------- meal_products (onthouden per product) ----------
+   Per product (key = naam in kleine letters): bij welke winkel, de plek in je
+   boodschappenvolgorde en of je het altijd in huis hebt. Geldt elke week. */
+function mealProductFromRow(row) { return { id: row.id, key: row.key, name: row.name, store: row.store || '', sortOrder: row.sort_order || 0, atHome: !!row.at_home }; }
+function mealProductToRow(p, userId) { return { user_id: userId, key: p.key, name: p.name, store: p.store || null, sort_order: p.sortOrder || 0, at_home: !!p.atHome }; }
+export async function dbUpsertMealProducts(userId, products) {
+  if (!products.length) return;
+  var { error } = await supabase.from('meal_products').upsert(
+    products.map(function (p) { return mealProductToRow(p, userId); }),
+    { onConflict: 'user_id,key' }
+  );
+  assertNoError('producten opslaan', error);
 }
 
 /* ---------- hyrox_library ---------- */
@@ -422,6 +436,7 @@ export async function fetchAllData(userId) {
   var mealsPromise = fetchOptionalTableSafely('meals', userId, 'created_at');
   var mealPlanPromise = fetchOptionalTableSafely('meal_plan', userId, 'date');
   var mealShoppingPromise = fetchOptionalTableSafely('meal_shopping', userId, 'week');
+  var mealProductsPromise = fetchOptionalTableSafely('meal_products', userId, 'sort_order');
 
   var results = await Promise.all([
     supabase.from('races').select('*').eq('user_id', userId).order('date', { ascending: true }),
@@ -443,6 +458,7 @@ export async function fetchAllData(userId) {
   var mealsRows = await mealsPromise;
   var mealPlanRows = await mealPlanPromise;
   var mealShoppingRows = await mealShoppingPromise;
+  var mealProductsRows = await mealProductsPromise;
 
   var [races, entries, strength, hyroxLib, hyroxLogs, hyroxRace, runRace, endurance, mood, complaints, checklist] = results;
 
@@ -462,6 +478,7 @@ export async function fetchAllData(userId) {
     meals: mealsRows.map(mealFromRow),
     mealPlan: mealPlanRows.map(mealPlanFromRow),
     mealShopping: mealShoppingRows.map(mealShoppingFromRow),
+    mealProducts: mealProductsRows.map(mealProductFromRow),
     triathlonChecklist: groupChecklistRows(checklist.data),
     isEmpty: races.data.length === 0 && entries.data.length === 0 && hyroxLib.data.length === 0 && checklist.data.length === 0,
   };

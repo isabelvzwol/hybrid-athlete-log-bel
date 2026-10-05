@@ -11,10 +11,10 @@ var e = React.createElement;
 export function GezondheidTab(props) {
   var s = props.state;
   return e('div', { className: 'flex flex-col gap-5' },
-    e(BodyWeightTracker, { bodyWeightLogs: s.bodyWeightLogs, onSave: props.saveBodyWeight, onDelete: props.deleteBodyWeight }),
     e(ComplaintTracker, { complaintLogs: s.complaintLogs, onAdd: props.addComplaint, onDelete: props.deleteComplaint }),
     e(ComplaintTrend, { complaintLogs: s.complaintLogs }),
     e(MoodTrend, { moodLogs: s.moodLogs }),
-    e(TrainingLoadTrend, { weeks: trainingLoadByWeek(s, 8) })
+    e(TrainingLoadTrend, { weeks: trainingLoadByWeek(s, 8) }),
+    e(BodyWeightTracker, { bodyWeightLogs: s.bodyWeightLogs, onSave: props.saveBodyWeight, onDelete: props.deleteBodyWeight })
   );
 }

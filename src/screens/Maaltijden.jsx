@@ -22,7 +22,7 @@ function chipStyle(active) {
 }
 function lastGuests(plan) {
   var best = null;
-  plan.forEach(function (x) { if (x.kind === 'meal' && x.guests && (!best || x.date > best.date)) best = x; });
+  plan.forEach(function (x) { if ((x.kind === 'meal' || x.kind === 'freezer') && x.guests && (!best || x.date > best.date)) best = x; });
   return best ? best.guests : [];
 }
 
@@ -66,15 +66,15 @@ function DinnerModal(props) {
   var meals = props.meals;
   // Oude "Niet thuis"-dagen tellen voortaan als "Buiten de deur".
   var stKind = useState(item ? (item.kind === 'skip' ? 'out' : item.kind) : 'meal'); var kind = stKind[0], setKind = stKind[1];
-  var stName = useState(item && item.kind === 'meal' ? item.name || '' : ''); var name = stName[0], setName = stName[1];
+  var stName = useState(item && (item.kind === 'meal' || item.kind === 'freezer') ? item.name || '' : ''); var name = stName[0], setName = stName[1];
   var stIng = useState(item && item.kind === 'meal' ? (item.ingredients || []).join('\n') : ''); var ingText = stIng[0], setIngText = stIng[1];
-  var initialGuests = item ? (item.kind === 'meal' ? item.guests || [] : []) : (props.defaultGuests || []);
+  var initialGuests = item ? ((item.kind === 'meal' || item.kind === 'freezer') ? item.guests || [] : []) : (props.defaultGuests || []);
   var stFixed = useState(initialGuests.filter(function (g) { return FIXED_GUESTS.indexOf(g) !== -1; })); var fixed = stFixed[0], setFixed = stFixed[1];
   var otherInit = initialGuests.filter(function (g) { return FIXED_GUESTS.indexOf(g) === -1; });
   var stOtherOn = useState(otherInit.length > 0); var otherOn = stOtherOn[0], setOtherOn = stOtherOn[1];
   var stOtherText = useState(otherInit.join(', ')); var otherText = stOtherText[0], setOtherText = stOtherText[1];
   var stPersons = useState(item && item.persons ? item.persons : 1 + initialGuests.length); var persons = stPersons[0], setPersons = stPersons[1];
-  var stNote = useState(item && item.kind !== 'meal' ? item.note || '' : ''); var note = stNote[0], setNote = stNote[1];
+  var stNote = useState(item && item.kind !== 'meal' && item.kind !== 'freezer' ? item.note || '' : ''); var note = stNote[0], setNote = stNote[1];
   var stQuery = useState(''); var query = stQuery[0], setQuery = stQuery[1];
   var stMealId = useState(item ? item.mealId || null : null); var mealId = stMealId[0], setMealId = stMealId[1];
   var stLib = useState(null); var libOverride = stLib[0], setLibOverride = stLib[1];
@@ -98,24 +98,47 @@ function DinnerModal(props) {
     setOtherOn(on);
     setPersons(1 + fixed.length + (on ? 1 : 0));
   }
+  var cooks = kind === 'meal' || kind === 'freezer';
   function save() {
-    if (kind === 'meal' && !trimmedName) return;
-    var guests = kind === 'meal' ? fixed.concat(otherOn ? [otherText.trim() || 'Anders'] : []) : [];
+    if (cooks && !trimmedName) return;
+    var guests = cooks ? fixed.concat(otherOn ? [otherText.trim() || 'Anders'] : []) : [];
     var entry = {
       id: item ? item.id : uid(), date: props.date, kind: kind,
       mealId: kind === 'meal' ? (matchMeal ? matchMeal.id : mealId) : null,
-      name: kind === 'meal' ? trimmedName : '',
+      name: cooks ? trimmedName : '',
       ingredients: kind === 'meal' ? parseLines(ingText) : [],
-      persons: kind === 'meal' ? persons : null,
+      persons: cooks ? persons : null,
       guests: guests,
-      note: kind === 'meal' ? '' : note.trim()
+      note: cooks ? '' : note.trim()
     };
     props.onSave(entry, kind === 'meal' ? { saveNew: !matchMeal && libChecked, updateExisting: (matchMeal && libChecked) ? matchMeal : null } : null);
   }
 
+  var guestBlock = e('div', { className: 'flex flex-col gap-3' },
+    e('div', { className: 'flex flex-col gap-2' },
+      e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Wie eet er mee?'),
+      e('div', { className: 'flex gap-2 flex-wrap' },
+        e('button', { onClick: selectAlone, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(alone) }, 'Alleen'),
+        FIXED_GUESTS.map(function (g) {
+          return e('button', { key: g, onClick: function () { toggleFixed(g); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(fixed.indexOf(g) !== -1) }, g);
+        }),
+        e('button', { onClick: toggleOther, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(otherOn) }, 'Anders')
+      ),
+      otherOn ? e(TextInput, { placeholder: 'Wie? (optioneel)', value: otherText, onChange: function (ev) { setOtherText(ev.target.value); } }) : null
+    ),
+    e('div', { className: 'flex items-center justify-between rounded-xl px-3 py-2', style: { background: 'var(--bg-inset)' } },
+      e('span', { className: 'text-sm' }, 'Aantal personen'),
+      e('div', { className: 'flex items-center gap-3' },
+        e('button', { onClick: function () { setPersons(Math.max(1, persons - 1)); }, className: 'w-8 h-8 rounded-full', style: { background: 'var(--bg-elevated)' } }, '−'),
+        e('span', { className: 'font-display text-base font-semibold w-4 text-center' }, persons),
+        e('button', { onClick: function () { setPersons(Math.min(12, persons + 1)); }, className: 'w-8 h-8 rounded-full', style: { background: 'var(--bg-elevated)' } }, '+')
+      )
+    )
+  );
+
   return e(Modal, { title: 'Avondeten ' + dayLabel(props.date).toLowerCase(), onClose: props.onClose },
     e('div', { className: 'flex flex-col gap-3' },
-      e(SegTabs, { value: kind, onChange: setKind, options: [{ value: 'meal', label: '🍳 Koken' }, { value: 'out', label: '🚪 Buiten de deur' }] }),
+      e(SegTabs, { value: kind, onChange: setKind, options: [{ value: 'meal', label: '🍳 Koken' }, { value: 'freezer', label: '🧊 Vriezer' }, { value: 'out', label: '🚪 Buiten' }] }),
       kind === 'meal' ? e('div', { className: 'flex flex-col gap-3' },
         meals.length ? e('div', { className: 'flex flex-col gap-2' },
           e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Kies uit je eigen maaltijden'),
@@ -129,33 +152,25 @@ function DinnerModal(props) {
         e(Field, { label: 'Maaltijd' }, e(TextInput, { value: name, onChange: function (ev) { setName(ev.target.value); }, placeholder: 'bv. Stamppot met snijbonen' })),
         e(Field, { label: 'Boodschappen voor deze maaltijd (één per regel)' }, e('textarea', { rows: 5, value: ingText, onChange: function (ev) { setIngText(ev.target.value); }, placeholder: 'snijbonen\naardappelen\nrookworst' })),
         e('p', { className: 'text-xs -mt-1', style: { color: 'var(--text-tertiary)' } }, 'Dit geldt alleen voor deze dag. Wissel je sperziebonen voor snijbonen, dan blijft je bewaarde maaltijd gewoon staan.'),
-        e('div', { className: 'flex flex-col gap-2' },
-          e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Wie eet er mee?'),
-          e('div', { className: 'flex gap-2 flex-wrap' },
-            e('button', { onClick: selectAlone, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(alone) }, 'Alleen'),
-            FIXED_GUESTS.map(function (g) {
-              return e('button', { key: g, onClick: function () { toggleFixed(g); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(fixed.indexOf(g) !== -1) }, g);
-            }),
-            e('button', { onClick: toggleOther, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(otherOn) }, 'Anders')
-          ),
-          otherOn ? e(TextInput, { placeholder: 'Wie? (optioneel)', value: otherText, onChange: function (ev) { setOtherText(ev.target.value); } }) : null
-        ),
-        e('div', { className: 'flex items-center justify-between rounded-xl px-3 py-2', style: { background: 'var(--bg-inset)' } },
-          e('span', { className: 'text-sm' }, 'Aantal personen'),
-          e('div', { className: 'flex items-center gap-3' },
-            e('button', { onClick: function () { setPersons(Math.max(1, persons - 1)); }, className: 'w-8 h-8 rounded-full', style: { background: 'var(--bg-elevated)' } }, '−'),
-            e('span', { className: 'font-display text-base font-semibold w-4 text-center' }, persons),
-            e('button', { onClick: function () { setPersons(Math.min(12, persons + 1)); }, className: 'w-8 h-8 rounded-full', style: { background: 'var(--bg-elevated)' } }, '+')
-          )
-        ),
+        guestBlock,
         trimmedName ? e('button', { onClick: function () { setLibOverride(!libChecked); }, className: 'flex items-center gap-2 text-left' },
           e('span', { className: 'w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0', style: libChecked ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, libChecked ? '✓' : ''),
           e('span', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, matchMeal ? 'Pas ook mijn bewaarde maaltijd "' + matchMeal.name + '" aan' : 'Bewaar in mijn maaltijden (met boodschappen)')
         ) : null
+      ) : kind === 'freezer' ? e('div', { className: 'flex flex-col gap-3' },
+        props.freezerNames && props.freezerNames.length ? e('div', { className: 'flex flex-col gap-2' },
+          e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Eerder uit de vriezer'),
+          e('div', { className: 'flex gap-2 flex-wrap' }, props.freezerNames.map(function (n) {
+            return e('button', { key: n, onClick: function () { setName(n); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(trimmedName.toLowerCase() === n.toLowerCase()) }, n);
+          }))
+        ) : null,
+        e(Field, { label: 'Wat eet je uit de vriezer?' }, e(TextInput, { value: name, onChange: function (ev) { setName(ev.target.value); }, placeholder: 'bv. Chili con carne' })),
+        e('p', { className: 'text-xs -mt-1', style: { color: 'var(--text-tertiary)' } }, 'Er komt niets op je boodschappenlijst.'),
+        guestBlock
       ) : e(Field, { label: 'Waar of bij wie? (optioneel)' },
         e(TextInput, { value: note, onChange: function (ev) { setNote(ev.target.value); }, placeholder: 'bv. Pizzeria met Sanne, of bij Mart' })),
       e('div', { className: 'flex gap-2 mt-1' },
-        e(Button, { className: 'flex-1', onClick: save, disabled: kind === 'meal' && !trimmedName }, 'Opslaan'),
+        e(Button, { className: 'flex-1', onClick: save, disabled: cooks && !trimmedName }, 'Opslaan'),
         item ? e(ConfirmInline, { label: 'Leegmaken', onConfirm: function () { props.onClear(props.date); } }) : null
       )
     )
@@ -196,6 +211,16 @@ function PlanView(props) {
         body = e('div', {},
           e('div', { className: 'text-sm font-semibold' }, '🚪 Buiten de deur'),
           item.note ? e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, item.note) : null
+        );
+      } else if (item.kind === 'freezer') {
+        var fguests = item.guests || [];
+        var fwith = fguests.length ? 'Met ' + fguests.join(', ') : (item.persons === 1 ? 'Alleen' : null);
+        body = e('div', {},
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'text-sm font-semibold' }, '🧊 ' + item.name),
+            item.persons ? e('span', { className: 'text-xs rounded-full px-2 py-0.5', style: { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' } }, item.persons + ' pers.') : null
+          ),
+          e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Uit de vriezer' + (fwith ? ' · ' + fwith : ''))
         );
       } else {
         var guests = item.guests || [];
@@ -502,6 +527,10 @@ export function MealsTab(props) {
   var stMonday = useState(defaultMonday()); var monday = stMonday[0], setMonday = stMonday[1];
   var stDay = useState(null); var openDay = stDay[0], setOpenDay = stDay[1];
   var stMeal = useState(null); var mealModal = stMeal[0], setMealModal = stMeal[1]; // null | 'new' | meal
+  var freezerNames = [];
+  plan.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (x) {
+    if (x.kind === 'freezer' && x.name && freezerNames.every(function (n) { return n.toLowerCase() !== x.name.toLowerCase(); })) freezerNames.push(x.name);
+  });
   var openItem = openDay ? plan.find(function (x) { return x.date === openDay; }) || null : null;
 
   function copyPrevWeek() {
@@ -541,7 +570,7 @@ export function MealsTab(props) {
     view === 'plan' ? e(PlanView, { monday: monday, plan: plan, onOpenDay: setOpenDay }) : null,
     view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts }) : null,
     view === 'meals' ? e(LibraryView, { meals: meals, onNew: function () { setMealModal('new'); }, onEdit: function (m) { setMealModal(m); } }) : null,
-    openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, defaultGuests: lastGuests(plan), onClose: function () { setOpenDay(null); },
+    openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, defaultGuests: lastGuests(plan), freezerNames: freezerNames.slice(0, 8), onClose: function () { setOpenDay(null); },
       onSave: saveDay, onClear: function (d) { props.clearMealDay(d); setOpenDay(null); } }) : null,
     mealModal ? e(MealEditModal, { meal: mealModal === 'new' ? null : mealModal, onClose: function () { setMealModal(null); },
       onSave: function (m) { if (mealModal === 'new') props.addMeal(m); else props.updateMeal(m); setMealModal(null); },

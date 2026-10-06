@@ -296,6 +296,7 @@ function ShoppingView(props) {
   var stHidden = useState(false); var showHidden = stHidden[0], setShowHidden = stHidden[1];
   var stDoneOpen = useState(true); var doneOpen = stDoneOpen[0], setDoneOpen = stDoneOpen[1];
   var stAddOpen = useState(false); var addOpen = stAddOpen[0], setAddOpen = stAddOpen[1];
+  var stReorderQuick = useState(false); var reorderQuick = stReorderQuick[0], setReorderQuick = stReorderQuick[1];
 
   var checkedKeys = row.checked || [];
   var extras = row.extras || [];
@@ -355,6 +356,18 @@ function ShoppingView(props) {
     if (extras.some(function (q) { return q.checked && extraKind(q) === kind; })) {
       persist(checkedKeys, extras.filter(function (q) { return !(q.checked && extraKind(q) === kind); }), home);
     }
+  }
+  /* Volgorde van Tussendoor: twee buren in dezelfde winkelgroep wisselen van plek
+     in de bewaarde rij. */
+  function moveQuick(group, i, dir) {
+    var j = i + dir;
+    if (j < 0 || j >= group.length) return;
+    var next = quickItems.slice();
+    var a = next.findIndex(function (q) { return q.id === group[i].id; });
+    var b = next.findIndex(function (q) { return q.id === group[j].id; });
+    if (a === -1 || b === -1) return;
+    var tmp = next[a]; next[a] = next[b]; next[b] = tmp;
+    props.onSaveQuick(next);
   }
   function addExtra() {
     var t = newText.trim();
@@ -560,13 +573,20 @@ function ShoppingView(props) {
       )
     ),
     quickAll.length ? e(Card, { className: 'p-3.5' },
-      e('div', { className: 'text-sm font-semibold' }, '🏃 Tussendoor'),
+      e('div', { className: 'flex items-center justify-between' },
+        e('div', { className: 'text-sm font-semibold' }, '🏃 Tussendoor'),
+        quickOpen.length > 1 ? e('button', { onClick: function () { setReorderQuick(!reorderQuick); }, className: 'text-xs font-medium', style: { color: 'var(--slate)' } }, reorderQuick ? '✓ Klaar met volgorde' : '↕ Volgorde aanpassen') : null
+      ),
+      reorderQuick ? e('p', { className: 'text-xs pt-1', style: { color: 'var(--text-tertiary)' } }, 'Gebruik de pijltjes. Je kunt items verplaatsen binnen dezelfde winkel.') : null,
       e('div', { className: 'flex flex-col' },
         quickGroups(quickOpen).map(function (g) {
           if (!g.items.length) return null;
           var rows = [];
           if (quickHasStores) rows.push(heading(g.store || 'Geen vaste winkel'));
-          g.items.forEach(function (x) { rows.push(rowEl(extraKey(x), x.text, null, false, function () { toggleExtra(x); }, function () { removeExtra(x); }, null, null)); });
+          g.items.forEach(function (x, i) {
+            rows.push(rowEl(extraKey(x), x.text, null, false, function () { toggleExtra(x); }, function () { removeExtra(x); }, null,
+              reorderQuick ? { up: i > 0 ? function () { moveQuick(g.items, i, -1); } : null, down: i < g.items.length - 1 ? function () { moveQuick(g.items, i, 1); } : null } : null));
+          });
           return e('div', { key: 'qg-' + g.store, className: 'flex flex-col' }, rows);
         }),
         quickDone.length ? doneHeader('qdone-h', quickDone.length) : null,

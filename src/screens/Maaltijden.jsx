@@ -16,6 +16,10 @@ var e = React.createElement;
 var FOOD_STORES = ['AH', 'Lidl', 'Jumbo', 'Anders'];
 var OTHER_STORES = ['Kruidvat', 'Etos', 'Anders'];
 var FIXED_GUESTS = ['Papa', 'Mart', 'Vriendinnen'];
+/* "Tussendoor"-boodschappen horen niet bij één week: ze blijven staan tot je ze
+   zelf verwijdert. Ze worden bewaard in een eigen rij van meal_shopping met een
+   vaste datum in plaats van een weekdatum (zo is er geen extra SQL nodig). */
+var QUICK_WEEK = '1900-01-01';
 
 function chipStyle(active) {
   return active ? { background: 'var(--sage-bg)', color: 'var(--sage-strong)' } : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' };
@@ -300,6 +304,7 @@ function ShoppingView(props) {
     return (x.store === 'Kruidvat' || x.store === 'Etos' || x.store === 'Anders') ? 'other' : 'food';
   }
   var home = row.home || [];
+  var quickItems = props.quickItems || [];
   var checkedSet = {};
   checkedKeys.forEach(function (k) { checkedSet[k] = true; });
   var prodMap = {};
@@ -331,7 +336,8 @@ function ShoppingView(props) {
   function addExtra() {
     var t = newText.trim();
     if (!t) return;
-    persist(checkedKeys, extras.concat([{ id: uid(), text: t, checked: false, store: newStore, kind: newKind }]), home);
+    if (newKind === 'quick') props.onSaveQuick(quickItems.concat([{ id: uid(), text: t, checked: false, store: newStore }]));
+    else persist(checkedKeys, extras.concat([{ id: uid(), text: t, checked: false, store: newStore, kind: newKind }]), home);
     setNewText('');
   }
   /* Verwijdert een product van de lijst door het uit de geplande maaltijden van
@@ -348,6 +354,9 @@ function ShoppingView(props) {
     if (checkedKeys.indexOf(key) !== -1) persist(checkedKeys.filter(function (k) { return k !== key; }), extras, home);
   }
   function resetChecks() { persist([], extras.map(function (x) { return Object.assign({}, x, { checked: false }); }), home); }
+  function toggleQuick(id) { props.onSaveQuick(quickItems.map(function (x) { return x.id === id ? Object.assign({}, x, { checked: !x.checked }) : x; })); }
+  function removeQuick(id) { props.onSaveQuick(quickItems.filter(function (x) { return x.id !== id; })); }
+  function clearDoneQuick() { props.onSaveQuick(quickItems.filter(function (x) { return !x.checked; })); }
 
   /* Alle producten van deze week die de app nog niet kent krijgen nu een plek
      onderaan, in de volgorde waarin ze op het scherm staan. Zo schuift er niets
@@ -401,6 +410,13 @@ function ShoppingView(props) {
       g.items.forEach(function (it) { lines.push('- ' + it.text); });
       lines.push('');
     });
+    var openQuick = quickItems.filter(function (x) { return !x.checked; });
+    quickGroups(openQuick).forEach(function (g) {
+      if (!g.items.length) return;
+      lines.push('Tussendoor' + (g.store ? ' (' + g.store + ')' : '') + ':');
+      g.items.forEach(function (x) { lines.push('- ' + x.text); });
+      lines.push('');
+    });
     var openExtras = otherExtras.filter(function (x) { return !x.checked; });
     extraGroups(openExtras).forEach(function (g) {
       if (!g.items.length) return;
@@ -418,6 +434,12 @@ function ShoppingView(props) {
     var order = [''].concat(FOOD_STORES);
     return order.map(function (st) {
       return { store: st, items: sortByOrder(items.filter(function (it) { return (it.store || '') === st; })) };
+    });
+  }
+  function quickGroups(items) {
+    var order = [''].concat(FOOD_STORES);
+    return order.map(function (st) {
+      return { store: st, items: items.filter(function (x) { return (x.store || '') === st; }) };
     });
   }
   function extraGroups(items) {
@@ -459,6 +481,9 @@ function ShoppingView(props) {
   var empty = !all.length && !extras.length;
   var sheetItem = sheetKey ? all.find(function (it) { return it.key === sheetKey; }) : null;
   var extraHasStores = otherExtras.some(function (x) { return x.store; });
+  var quickOpen = quickItems.filter(function (x) { return !x.checked; });
+  var quickDone = quickItems.filter(function (x) { return x.checked; });
+  var quickHasStores = quickItems.some(function (x) { return x.store; });
 
   var mainRows = [];
   openGroups.forEach(function (g) {
@@ -496,20 +521,36 @@ function ShoppingView(props) {
     ),
     e(Card, { className: 'p-3.5' },
       e('div', { className: 'text-sm font-semibold' }, 'Extra toevoegen'),
-      e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Alleen voor deze week. Supermarkt komt in je gewone lijst, drogist en overig in een apart lijstje.'),
+      e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Week komt in je weekboodschappen (alleen deze week). Tussendoor blijft staan tot je het verwijdert. Drogist komt in een apart lijstje.'),
       e('div', { className: 'flex flex-col gap-2 mt-2' },
         e(TextInput, { placeholder: 'Extra boodschap (bv. melk of tandpasta)', value: newText, onChange: function (ev) { setNewText(ev.target.value); }, onKeyDown: function (ev) { if (ev.key === 'Enter') addExtra(); } }),
         e(SegTabs, { value: newKind, onChange: function (v) { setNewKind(v); setNewStore(''); },
-          options: [{ value: 'food', label: '🛒 Supermarkt' }, { value: 'other', label: '🧴 Drogist en overig' }] }),
+          options: [{ value: 'food', label: '🛒 Week' }, { value: 'quick', label: '🏃 Tussendoor' }, { value: 'other', label: '🧴 Drogist' }] }),
         e('div', { className: 'flex gap-2 flex-wrap items-center' },
           e('button', { onClick: function () { setNewStore(''); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(!newStore) }, 'Geen winkel'),
-          (newKind === 'food' ? FOOD_STORES : OTHER_STORES).map(function (st) {
+          (newKind === 'other' ? OTHER_STORES : FOOD_STORES).map(function (st) {
             return e('button', { key: st, onClick: function () { setNewStore(st); }, className: 'rounded-full px-3 py-1.5 text-xs font-medium', style: chipStyle(newStore === st) }, st);
           }),
           e(Button, { variant: 'ghost', className: 'ml-auto', onClick: addExtra, disabled: !newText.trim() }, '+ Toevoegen')
         )
       )
     ),
+    quickItems.length ? e(Card, { className: 'p-3.5' },
+      e('div', { className: 'text-sm font-semibold' }, '🏃 Tussendoor'),
+      e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Blijft staan tot je het zelf verwijdert, ook in volgende weken.'),
+      e('div', { className: 'flex flex-col' },
+        quickGroups(quickOpen).map(function (g) {
+          if (!g.items.length) return null;
+          var rows = [];
+          if (quickHasStores) rows.push(heading(g.store || 'Geen vaste winkel'));
+          g.items.forEach(function (x) { rows.push(rowEl('q-' + x.id, x.text, null, false, function () { toggleQuick(x.id); }, function () { removeQuick(x.id); }, null, null)); });
+          return e('div', { key: 'qg-' + g.store, className: 'flex flex-col' }, rows);
+        }),
+        quickDone.length ? doneHeader('qdone-h', quickDone.length) : null,
+        quickDone.length && doneOpen ? quickDone.map(function (x) { return rowEl('q-' + x.id, x.text + (x.store ? ' (' + x.store + ')' : ''), null, true, function () { toggleQuick(x.id); }, function () { removeQuick(x.id); }, null, null); }) : null,
+        quickDone.length && doneOpen ? e('button', { key: 'q-clear', onClick: clearDoneQuick, className: 'text-xs font-medium text-left pt-1 pb-1', style: { color: 'var(--danger)' } }, 'Afgevinkte verwijderen') : null
+      )
+    ) : null,
     (otherExtras.length) ? e(Card, { className: 'p-3.5' },
       e('div', { className: 'text-sm font-semibold' }, 'Drogist en overig'),
       e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Alleen voor deze week.'),
@@ -541,7 +582,7 @@ function ShoppingView(props) {
       })) : null
     ) : null,
     e('div', { className: 'flex gap-2' },
-      e(Button, { variant: 'ghost', className: 'flex-1', onClick: copyList, disabled: empty }, copied ? '✓ Gekopieerd' : 'Kopieer lijst'),
+      e(Button, { variant: 'ghost', className: 'flex-1', onClick: copyList, disabled: empty && !quickItems.length }, copied ? '✓ Gekopieerd' : 'Kopieer lijst'),
       e(Button, { variant: 'ghost', onClick: resetChecks, disabled: !checkedKeys.length && !extras.some(function (x) { return x.checked; }) }, 'Vinkjes wissen')
     ),
     sheetItem ? e(ProductModal, { item: sheetItem, onClose: function () { setSheetKey(null); },
@@ -616,7 +657,9 @@ export function MealsTab(props) {
       e(KebabMenu, { actions: [{ label: 'Wis deze week', danger: true, confirm: true, onClick: clearWeek }] })
     ) : null,
     view === 'plan' ? e(PlanView, { monday: monday, plan: plan, onOpenDay: setOpenDay }) : null,
-    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts, onSaveDay: props.saveMealDay }) : null,
+    view === 'shop' ? e(ShoppingView, { key: monday, monday: monday, plan: plan, shopping: shoppingRows.find(function (r) { return r.week === monday; }), products: s.mealProducts || [], onSave: props.saveShopping, onSaveProducts: props.saveProducts, onSaveDay: props.saveMealDay,
+      quickItems: ((shoppingRows.find(function (r) { return r.week === QUICK_WEEK; }) || {}).extras) || [],
+      onSaveQuick: function (items) { props.saveShopping(QUICK_WEEK, [], items, []); } }) : null,
     view === 'meals' ? e(LibraryView, { meals: meals, onNew: function () { setMealModal('new'); }, onEdit: function (m) { setMealModal(m); } }) : null,
     openDay ? e(DinnerModal, { key: openDay, date: openDay, item: openItem, meals: meals, defaultGuests: lastGuests(plan), freezerNames: freezerNames.slice(0, 8), onClose: function () { setOpenDay(null); },
       onSave: saveDay, onClear: function (d) { props.clearMealDay(d); setOpenDay(null); } }) : null,

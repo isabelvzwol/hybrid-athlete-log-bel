@@ -169,6 +169,16 @@ function AppInner(props) {
 
   function addStrengthLog(log) { setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.concat([log]) }); }); track(db.dbInsertStrengthLog(userId, log)); }
 
+  /* Verwijdert een opgeslagen krachtworkout. Lukt dat in de database niet, dan
+     komt de workout terug en zie je een foutmelding. */
+  function deleteStrengthLog(id) {
+    var previous = (state.strengthLogs || []).find(function (x) { return x.id === id; });
+    setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.filter(function (x) { return x.id !== id; }) }); });
+    trackCritical(db.dbDeleteStrengthLog(id), function () {
+      if (previous) setState(function (p) { return Object.assign({}, p, { strengthLogs: p.strengthLogs.concat([previous]) }); });
+    });
+  }
+
   /* Concepten van krachtworkouts (zie bovenaan dit bestand). */
   function patchStrengthDraft(templateId, patch) {
     setStrengthDrafts(function (p) {
@@ -431,7 +441,7 @@ function AppInner(props) {
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, addRace: addRace });
   else if (tab === 'eten') content = e(MealsTab, { state: state, addMeal: addMeal, updateMeal: updateMeal, deleteMeal: deleteMeal, saveMealDay: saveMealDay, clearMealDay: clearMealDay, saveShopping: saveShopping, saveProducts: saveProducts });
-  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
+  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, deleteStrengthLog: deleteStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
   else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
   else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
   else if (tab === 'prs') content = e(PRTab, { state: state, addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs });

@@ -4,7 +4,7 @@
    nieuwe Gezondheid-tab kan staan. Ruimte voor toekomstige toevoegingen
    (bv. slaap) is bewust in dit bestand, niet in Home.jsx. */
 import React, { useState } from 'react';
-import { Card, Badge, Button, TextInput } from './ui.jsx';
+import { Card, Badge, Button, TextInput, Field } from './ui.jsx';
 import { SimpleLineChart, SimpleBarChart } from './charts.jsx';
 import { uid, num, todayISO, formatDateShort, monthKeyOf, monthLabel, getMonday, addDays, isoWeekNumber } from '../lib/helpers.js';
 import { SPORT_ICON } from '../lib/constants.js';
@@ -138,16 +138,24 @@ export function TrainingLoadTrend(props) {
 }
 
 export function ComplaintTracker(props) {
-  var st = useState({ type: '', pain: '5' }); var f = st[0], setF = st[1];
+  var st = useState({ type: '', pain: '5', date: todayISO() }); var f = st[0], setF = st[1];
   function set(k) { return function (ev) { var v = ev.target.value; setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }; }
   var list = props.complaintLogs.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+  /* Datum is standaard vandaag; je kunt hem terugzetten om een klacht van
+     eerder alsnog te loggen. Een lege datum valt terug op vandaag. */
+  function add() {
+    if (!f.type.trim()) return;
+    props.onAdd({ id: uid(), date: f.date || todayISO(), type: f.type.trim(), pain: num(f.pain) || 0 });
+    setF({ type: '', pain: '5', date: todayISO() });
+  }
   return e(Card, { className: 'p-4 flex flex-col gap-3' },
     e('div', { className: 'text-sm font-semibold' }, 'Klachten & blessures'),
+    e(TextInput, { placeholder: 'type klacht, bv. knie links', value: f.type, onChange: set('type') }),
     e('div', { className: 'grid grid-cols-2 gap-2' },
-      e(TextInput, { placeholder: 'type klacht, bv. knie links', value: f.type, onChange: set('type') }),
-      e(TextInput, { type: 'number', placeholder: 'pijn 1-10', value: f.pain, onChange: set('pain') })
+      e(Field, { label: 'Datum' }, e(TextInput, { type: 'date', value: f.date, max: todayISO(), onChange: set('date') })),
+      e(Field, { label: 'Pijn (1-10)' }, e(TextInput, { type: 'number', placeholder: 'pijn 1-10', value: f.pain, onChange: set('pain') }))
     ),
-    e(Button, { variant: 'ghost', onClick: function () { if (!f.type.trim()) return; props.onAdd({ id: uid(), date: todayISO(), type: f.type.trim(), pain: num(f.pain) || 0 }); setF({ type: '', pain: '5' }); } }, '+ Klacht loggen'),
+    e(Button, { variant: 'ghost', onClick: add }, '+ Klacht loggen'),
     list.length ? e('div', { className: 'flex flex-col gap-1' }, list.map(function (c, i) {
       return e('div', { key: c.id, className: 'flex items-center justify-between text-sm py-1.5', style: { borderTop: i > 0 ? '1px solid var(--border-soft)' : 'none' } },
         e('div', {}, e('span', { className: 'font-medium' }, c.type), e('span', { className: 'text-xs ml-2', style: { color: 'var(--text-tertiary)' } }, formatDateShort(c.date))),

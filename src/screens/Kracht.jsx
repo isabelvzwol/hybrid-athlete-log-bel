@@ -7,7 +7,7 @@
    mee als je hem afvinkt. Een bijbehorende training in Schema wordt na het
    opslaan automatisch afgevinkt. */
 import React, { useState } from 'react';
-import { Field, TextInput, Button, Card, Modal, KebabMenu } from '../components/ui.jsx';
+import { Field, TextInput, Button, Card, Modal, KebabMenu, ConfirmInline } from '../components/ui.jsx';
 import { HRZoneBadge } from '../components/charts.jsx';
 import { ExerciseRow, ExercisePicker, StrengthChartModal, strengthLastLog, strengthLastSets, strengthBestWeight, strengthBestRepsPerWeight, strengthKnownExercises, groupBySuperset, SupersetGroup } from '../components/strength.jsx';
 import { uid, todayISO, num, formatDateShort } from '../lib/helpers.js';
@@ -24,6 +24,56 @@ function TemplateNameModal(props) {
   );
 }
 
+/* Korte omschrijving van een opgeslagen workout, om dubbele te herkennen. */
+function logSummary(l) {
+  var sets = 0;
+  l.exercises.forEach(function (x) { sets += x.sets.length; });
+  var parts = [l.exercises.length + ' oefeningen', sets + ' sets'];
+  if (l.hr != null) parts.push(l.hr + ' bpm');
+  if (l.durationMin != null) parts.push(l.durationMin + ' min');
+  if (l.createdAt) {
+    var d = new Date(l.createdAt);
+    if (!isNaN(d.getTime())) parts.push('opgeslagen om ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2));
+  }
+  return parts.join(' · ');
+}
+function newestFirst(a, b) {
+  var ca = a.createdAt || '', cb = b.createdAt || '';
+  return ca < cb ? 1 : ca > cb ? -1 : 0;
+}
+
+/* Opruimhulp: workouts met dezelfde datum en hetzelfde schema. Per groep kies
+   je welke je bewaart; standaard de laatst opgeslagen. De rest wordt verwijderd. */
+function DuplicatesModal(props) {
+  var initial = {};
+  props.groups.forEach(function (g) { initial[g.key] = g.logs[0].id; });
+  var st = useState(initial); var keep = st[0], setKeep = st[1];
+  var toDelete = [];
+  props.groups.forEach(function (g) { g.logs.forEach(function (l) { if (l.id !== keep[g.key]) toDelete.push(l.id); }); });
+  return e(Modal, { title: 'Dubbele workouts opruimen', onClose: props.onClose },
+    e('div', { className: 'flex flex-col gap-4' },
+      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Dit zijn workouts met dezelfde datum en hetzelfde schema. Kies per groep welke je wilt bewaren. De andere worden verwijderd en tellen dan niet meer mee in je hartslagzones.'),
+      props.groups.map(function (g) {
+        return e('div', { key: g.key, className: 'flex flex-col gap-2' },
+          e('div', { className: 'text-sm font-semibold' }, g.template + ' · ' + formatDateShort(g.date)),
+          g.logs.map(function (l) {
+            var on = keep[g.key] === l.id;
+            return e('button', { key: l.id, onClick: function () { var n = Object.assign({}, keep); n[g.key] = l.id; setKeep(n); }, className: 'text-left rounded-xl px-3 py-2 flex items-start gap-3',
+              style: on ? { background: 'var(--sage-bg)' } : { background: 'var(--bg-elevated)' } },
+              e('span', { className: 'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5', style: on ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, on ? '✓' : ''),
+              e('span', { className: 'flex-1 min-w-0' },
+                e('span', { className: 'block text-xs font-medium', style: { color: on ? 'var(--sage-strong)' : 'var(--text-secondary)' } }, (on ? 'Bewaren: ' : 'Verwijderen: ') + logSummary(l)),
+                e('span', { className: 'block text-xs', style: { color: 'var(--text-tertiary)' } }, l.exercises.map(function (x) { return x.name + ' (' + x.sets.length + ')'; }).join(' · '))
+              )
+            );
+          })
+        );
+      }),
+      toDelete.length ? e(ConfirmInline, { label: 'Verwijder ' + toDelete.length + (toDelete.length === 1 ? ' dubbele workout' : ' dubbele workouts'), onConfirm: function () { props.onDelete(toDelete); } }) : null
+    )
+  );
+}
+
 export function KrachtTab(props) {
   var templates = (props.state.strengthTemplates || []).slice().sort(function (a, b) { return a.sortOrder - b.sortOrder; });
   var currentTemplate = templates.find(function (t) { return t.id === props.krachtTemplateId; }) || templates[0] || null;
@@ -34,6 +84,8 @@ export function KrachtTab(props) {
   var date = draft.date || todayISO();
 
   var st5 = useState(null); var chartExercise = st5[0], setChartExercise = st5[1];
+  var stAll = useState(false); var showAllLogs = stAll[0], setShowAllLogs = stAll[1];
+  var stDup = useState(false); var dupOpen = stDup[0], setDupOpen = stDup[1];
   var stModal = useState(null); var nameModal = stModal[0], setNameModal = stModal[1]; // null | 'create' | 'rename'
   var stSaving = useState(false); var saving = stSaving[0], setSaving = stSaving[1];
   var stMsg = useState(null); var msg = stMsg[0], setMsg = stMsg[1]; // { kind: 'ok' | 'error', text }
@@ -125,7 +177,17 @@ export function KrachtTab(props) {
     });
   }
 
-  var recent = props.state.strengthLogs.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 5);
+  var sortedLogs = props.state.strengthLogs.slice().sort(function (a, b) { return b.date.localeCompare(a.date) || newestFirst(a, b); });
+  var recent = showAllLogs ? sortedLogs : sortedLogs.slice(0, 5);
+  var dupMap = {};
+  sortedLogs.forEach(function (l) {
+    var k = l.date + '|' + (l.template || '');
+    if (!dupMap[k]) dupMap[k] = { key: k, date: l.date, template: l.template || 'Kracht', logs: [] };
+    dupMap[k].logs.push(l);
+  });
+  var dupGroups = Object.keys(dupMap).map(function (k) { return dupMap[k]; }).filter(function (g) { return g.logs.length > 1; });
+  var dupCount = 0;
+  dupGroups.forEach(function (g) { dupCount += g.logs.length - 1; });
   var groups = groupBySuperset(exercises);
   var flatIdx = 0;
   var known = strengthKnownExercises(props.state.strengthLogs, templates);
@@ -200,19 +262,28 @@ export function KrachtTab(props) {
     nameModal === 'create' ? e(TemplateNameModal, { title: 'Nieuw schema', confirmLabel: 'Aanmaken', onClose: function () { setNameModal(null); }, onSave: createTemplate }) : null,
     nameModal === 'rename' ? e(TemplateNameModal, { title: 'Schema hernoemen', confirmLabel: 'Opslaan', initialName: currentTemplate ? currentTemplate.name : '', onClose: function () { setNameModal(null); }, onSave: renameTemplate }) : null,
     recent.length ? e('div', { className: 'mt-2' },
-      e('div', { className: 'text-sm font-semibold mb-2' }, 'Recente workouts'),
+      e('div', { className: 'text-sm font-semibold mb-2' }, showAllLogs ? 'Alle workouts (' + sortedLogs.length + ')' : 'Recente workouts'),
+      dupGroups.length ? e(Card, { className: 'p-3 mb-2 flex items-center gap-3' },
+        e('div', { className: 'flex-1 text-xs', style: { color: 'var(--text-secondary)' } }, dupCount + (dupCount === 1 ? ' workout staat' : ' workouts staan') + ' mogelijk dubbel (zelfde dag en schema). Dat telt dubbel mee in je hartslagzones.'),
+        e(Button, { variant: 'ghost', onClick: function () { setDupOpen(true); } }, 'Opruimen')
+      ) : null,
       e('div', { className: 'flex flex-col gap-2' },
         recent.map(function (l) {
           return e(Card, { key: l.id, className: 'p-3' },
             e('div', { className: 'flex items-center justify-between mb-1' },
               e('span', { className: 'text-sm font-medium' }, l.template),
-              e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateShort(l.date))
+              e('div', { className: 'flex items-center gap-1' },
+                e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateShort(l.date)),
+                e(KebabMenu, { actions: [{ label: 'Workout verwijderen', danger: true, confirm: true, onClick: function () { props.deleteStrengthLog(l.id); } }] })
+              )
             ),
             l.warmupType ? e('div', { className: 'text-xs mb-1', style: { color: 'var(--text-tertiary)' } }, '🚴 Warming-up: ' + (l.warmupMinutes ? l.warmupMinutes + ' min ' : '') + l.warmupType.toLowerCase() + (l.warmupHr ? ' · ' + l.warmupHr + ' bpm' : '')) : null,
             e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, l.exercises.map(function (x) { return x.name + ' (' + x.sets.length + ' sets)'; }).join(' · '))
           );
         })
-      )
-    ) : null
+      ),
+      sortedLogs.length > 5 ? e('button', { onClick: function () { setShowAllLogs(!showAllLogs); }, className: 'w-full text-xs font-medium text-center pt-3', style: { color: 'var(--slate)' } }, showAllLogs ? 'Toon alleen de laatste 5' : 'Toon alle ' + sortedLogs.length + ' workouts') : null
+    ) : null,
+    dupOpen ? e(DuplicatesModal, { groups: dupGroups, onClose: function () { setDupOpen(false); }, onDelete: function (ids) { ids.forEach(function (id) { props.deleteStrengthLog(id); }); setDupOpen(false); } }) : null
   );
 }

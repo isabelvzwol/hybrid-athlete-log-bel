@@ -103,7 +103,8 @@ function strengthLogFromRow(row) {
     id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr,
     warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes,
     warmupHr: row.warmup_hr != null ? row.warmup_hr : null,
-    durationMin: row.duration_minutes
+    durationMin: row.duration_minutes,
+    createdAt: row.created_at || null
   };
 }
 function strengthLogToRow(log, userId) {
@@ -123,6 +124,14 @@ export async function dbInsertStrengthLog(userId, log) {
   // aangekomen. Dat telt als gelukt, zodat opnieuw proberen nooit dubbel opslaat.
   if (error && error.code === '23505') return;
   assertNoError('krachttraining opslaan', error);
+}
+
+/* Verwijdert één krachtlog. Met .select() zien we of er echt een rij is
+   verwijderd: bij een geblokkeerde rij geeft Supabase anders geen foutmelding. */
+export async function dbDeleteStrengthLog(id) {
+  var { data, error } = await supabase.from('strength_logs').delete().eq('id', id).select('id');
+  assertNoError('krachttraining verwijderen', error);
+  if (!data || !data.length) throw new Error('de workout kon niet worden verwijderd (niet gevonden of geen rechten)');
 }
 
 /* ---------- strength_templates ----------

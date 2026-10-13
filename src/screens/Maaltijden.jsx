@@ -377,8 +377,11 @@ function ShoppingView(props) {
   var allExtras = quickItems.map(function (x) { return Object.assign({}, x, { kind: x.kind || 'quick', src: 'perm' }); })
     .concat(extras.map(function (x) { return Object.assign({}, x, { kind: extraKind(x), src: 'week' }); }));
   var foodExtraItems = allExtras.filter(function (x) { return x.kind === 'food'; }).map(function (x) {
-    return { key: (x.src === 'perm' ? 'p-' : 'x-') + x.id, id: x.id, src: x.src, text: x.text, days: null, store: x.store || '', sort: null, isExtra: true, checked: !!x.checked, from: x.from || '' };
+    return { key: (x.src === 'perm' ? 'p-' : 'x-') + x.id, id: x.id, src: x.src, text: x.text, days: null, store: x.store || '', sort: x.sort != null ? x.sort : null, isExtra: true, checked: !!x.checked, from: x.from || '' };
   });
+  /* Zelf toegevoegde producten delen hun volgorde met de producten uit maaltijden,
+     dus het hoogste volgnummer kijkt naar beide. */
+  allExtras.forEach(function (x) { if (x.sort != null && x.sort > maxSort) maxSort = x.sort; });
   var quickAll = allExtras.filter(function (x) { return x.kind === 'quick'; });
   var checkAll = allExtras.filter(function (x) { return x.kind === 'check'; });
   var otherExtras = allExtras.filter(function (x) { return x.kind === 'other'; });
@@ -483,6 +486,8 @@ function ShoppingView(props) {
     var changed = Object.keys(map).filter(function (k) { return k === key || map[k].isNew; }).map(function (k) { var o = Object.assign({}, map[k]); delete o.isNew; return o; });
     props.onSaveProducts(changed);
   }
+  /* Eén plek omhoog of omlaag binnen een winkelgroep. Producten uit maaltijden
+     en zelf toegevoegde producten staan door elkaar in dezelfde volgorde. */
   function moveItem(group, i, dir) {
     var j = i + dir;
     if (j < 0 || j >= group.length) return;
@@ -495,11 +500,21 @@ function ShoppingView(props) {
     var order = group.slice();
     var tmp = order[i]; order[i] = order[j]; order[j] = tmp;
     var list = [];
+    var nextQuick = quickItems.slice(), quickChanged = false;
+    var nextWeek = extras.slice(), weekChanged = false;
     order.forEach(function (it, idx) {
+      if (it.isExtra) {
+        if (it.sort === vals[idx]) return;
+        if (it.src === 'perm') { nextQuick = nextQuick.map(function (q) { return q.id === it.id ? Object.assign({}, q, { sort: vals[idx] }) : q; }); quickChanged = true; }
+        else { nextWeek = nextWeek.map(function (q) { return q.id === it.id ? Object.assign({}, q, { sort: vals[idx] }) : q; }); weekChanged = true; }
+        return;
+      }
       var p = prodMap[it.key];
       if (!p || p.sortOrder !== vals[idx]) list.push({ key: it.key, name: p ? p.name : it.text, store: p ? p.store : '', sortOrder: vals[idx], atHome: p ? p.atHome : false });
     });
     if (list.length) props.onSaveProducts(list);
+    if (quickChanged) props.onSaveQuick(nextQuick);
+    if (weekChanged) persist(checkedKeys, nextWeek, home);
   }
   function backOnList(it) {
     if (it.weekHome) persist(checkedKeys, extras, home.filter(function (k) { return k !== it.key; }));
@@ -600,16 +615,13 @@ function ShoppingView(props) {
   openGroups.forEach(function (g) {
     if (!g.items.length) return;
     if (hasStores) mainRows.push(heading(g.store || 'Gewone boodschappen'));
-    var prodItems = g.items.filter(function (it) { return !it.isExtra; });
-    g.items.forEach(function (it) {
+    g.items.forEach(function (it, i) {
+      var arrows = reorder ? { up: i > 0 ? function () { moveItem(g.items, i, -1); } : null, down: i < g.items.length - 1 ? function () { moveItem(g.items, i, 1); } : null } : null;
       if (it.isExtra) {
-        mainRows.push(rowEl(it.key, it.text, it.from ? 'uit ' + it.from : 'extra', false, function () { toggleExtra(it); }, function () { removeExtra(it); }, null,
-          reorder ? { up: null, down: null } : null));
+        mainRows.push(rowEl(it.key, it.text, it.from ? 'uit ' + it.from : 'extra', false, function () { toggleExtra(it); }, function () { removeExtra(it); }, null, arrows));
         return;
       }
-      var i = prodItems.indexOf(it);
-      mainRows.push(rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }, function () { removeProduct(it.key); }, function () { setSheetKey(it.key); },
-        reorder ? { up: i > 0 ? function () { moveItem(prodItems, i, -1); } : null, down: i < prodItems.length - 1 ? function () { moveItem(prodItems, i, 1); } : null } : null));
+      mainRows.push(rowEl('i-' + it.key, it.text, it.days.join(', '), false, function () { toggleItem(it.key); }, function () { removeProduct(it.key); }, function () { setSheetKey(it.key); }, arrows));
     });
   });
 
@@ -656,7 +668,7 @@ function ShoppingView(props) {
     e(Card, { className: 'p-3.5' },
       e('div', { className: 'text-sm font-semibold' }, '🛒 Weekboodschappen'),
       empty ? e('div', { className: 'text-sm py-2', style: { color: 'var(--text-tertiary)' } }, 'Nog niets te kopen. Plan eerst maaltijden met boodschappen, of voeg zelf iets toe.') : null,
-      visible.length > 1 ? e('div', { className: 'flex justify-end' },
+      open.length > 1 ? e('div', { className: 'flex justify-end' },
         e('button', { onClick: function () { setReorder(!reorder); }, className: 'text-xs font-medium', style: { color: 'var(--slate)' } }, reorder ? '✓ Klaar met volgorde' : '↕ Volgorde aanpassen')
       ) : null,
       reorder ? e('p', { className: 'text-xs pt-1', style: { color: 'var(--text-tertiary)' } }, 'Gebruik de pijltjes. De volgorde wordt onthouden voor volgende weken.') : null,

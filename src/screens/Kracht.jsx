@@ -24,6 +24,95 @@ function TemplateNameModal(props) {
   );
 }
 
+/* Schema bewerken: de oefeningen van dit schema hernoemen, de volgorde
+   aanpassen, een oefening verwijderen of toevoegen en supersets instellen.
+   Alles wordt pas opgeslagen als je op "Opslaan" tikt. Wat je hier bewaart is
+   de nieuwe standaard van dit schema. */
+function TemplateEditorModal(props) {
+  var st = useState(props.exercises.map(function (x) { return { orig: x.name, name: x.name, link: !!x.linkToNext }; })); var items = st[0], setItems = st[1];
+  var stNew = useState(''); var newName = stNew[0], setNewName = stNew[1];
+  var stErr = useState(''); var err = stErr[0], setErr = stErr[1];
+  function patchItem(i, patch) { setItems(items.map(function (x, j) { return j === i ? Object.assign({}, x, patch) : x; })); setErr(''); }
+  function move(i, dir) {
+    var j = i + dir; if (j < 0 || j >= items.length) return;
+    var n = items.slice(); var tmp = n[i]; n[i] = n[j]; n[j] = tmp; setItems(n);
+  }
+  function remove(i) { setItems(items.filter(function (_, j) { return j !== i; })); setErr(''); }
+  function add() {
+    if (!newName.trim()) return;
+    setItems(items.concat([{ orig: null, name: newName.trim(), link: false }]));
+    setNewName(''); setErr('');
+  }
+  function save() {
+    var names = items.map(function (x) { return x.name.trim(); });
+    if (names.some(function (n) { return !n; })) { setErr('Een oefening heeft geen naam. Vul een naam in of verwijder de oefening.'); return; }
+    var lower = names.map(function (n) { return n.toLowerCase(); });
+    if (lower.some(function (n, i) { return lower.indexOf(n) !== i; })) { setErr('Een oefening staat twee keer in dit schema. Geef ze een verschillende naam of verwijder er één.'); return; }
+    var exercises = items.map(function (x, i) { return { name: names[i], linkToNext: i < items.length - 1 ? x.link : false }; });
+    var renames = [];
+    items.forEach(function (x, i) { if (x.orig && x.orig !== names[i]) renames.push({ from: x.orig, to: names[i] }); });
+    props.onSave(exercises, renames);
+  }
+  var btn = { color: 'var(--slate)' };
+  return e(Modal, { title: 'Schema bewerken', onClose: props.onClose },
+    e('div', { className: 'flex flex-col gap-3' },
+      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Wat je hier opslaat is voortaan de standaard van dit schema. Hernoem een oefening, verplaats hem met ▲ ▼, verwijder hem met ✕ of koppel hem met 🔗 als superset aan de oefening eronder.'),
+      items.length ? e('div', { className: 'flex flex-col gap-2' }, items.map(function (x, i) {
+        return e('div', { key: i, className: 'flex items-center gap-2' },
+          e('div', { className: 'flex-1 min-w-0' }, e(TextInput, { value: x.name, onChange: function (ev) { patchItem(i, { name: ev.target.value }); } })),
+          i < items.length - 1 ? e('button', { onClick: function () { patchItem(i, { link: !x.link }); }, title: 'Superset met volgende oefening', className: 'text-sm', style: { color: x.link ? 'var(--amber)' : 'var(--slate)' } }, '🔗') : e('span', { className: 'text-sm', style: { width: '18px' } }),
+          e('button', { onClick: function () { move(i, -1); }, disabled: i === 0, className: 'text-sm', style: Object.assign({ opacity: i === 0 ? 0.3 : 1 }, btn) }, '▲'),
+          e('button', { onClick: function () { move(i, 1); }, disabled: i === items.length - 1, className: 'text-sm', style: Object.assign({ opacity: i === items.length - 1 ? 0.3 : 1 }, btn) }, '▼'),
+          e('button', { onClick: function () { remove(i); }, className: 'text-xs', style: { color: 'var(--danger)' } }, '✕')
+        );
+      })) : e('p', { className: 'text-sm', style: { color: 'var(--text-tertiary)' } }, 'Dit schema heeft nog geen oefeningen.'),
+      e('div', { className: 'flex items-center gap-2' },
+        e('div', { className: 'flex-1 min-w-0' }, e(TextInput, { placeholder: 'Nieuwe oefening', value: newName, onChange: function (ev) { setNewName(ev.target.value); }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); add(); } } })),
+        e(Button, { variant: 'ghost', onClick: add }, '+ Toevoegen')
+      ),
+      e('p', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Let op: hernoem je een oefening, dan blijven je eerdere workouts onder de oude naam staan. De vorige gewichten en grafiek van die oefening zie je dan niet meer bij de nieuwe naam.'),
+      err ? e('div', { className: 'rounded-xl px-3 py-2.5 text-xs font-semibold', style: { background: 'var(--danger-bg)', color: 'var(--danger)' } }, err) : null,
+      e(Button, { className: 'w-full', onClick: save }, 'Opslaan')
+    )
+  );
+}
+
+/* Opruimhulp voor schema's met dezelfde naam (bv. drie keer "Leg day"). Per
+   naam kies je welk schema je bewaart; de andere worden verwijderd. Workouts
+   en Schema-trainingen gebruiken alleen de naam, dus die blijven gewoon bestaan. */
+function TemplateDuplicatesModal(props) {
+  var initial = {};
+  props.groups.forEach(function (g) {
+    var cur = g.templates.find(function (t) { return t.id === props.currentId; });
+    initial[g.key] = (cur || g.templates[0]).id;
+  });
+  var st = useState(initial); var keep = st[0], setKeep = st[1];
+  var toDelete = [];
+  props.groups.forEach(function (g) { g.templates.forEach(function (t) { if (t.id !== keep[g.key]) toDelete.push(t.id); }); });
+  return e(Modal, { title: 'Dubbele schema\'s opruimen', onClose: props.onClose },
+    e('div', { className: 'flex flex-col gap-4' },
+      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Deze schema\'s staan meerdere keren in je lijst. Kies per naam welk schema je bewaart, de andere worden verwijderd. Je opgeslagen workouts blijven bestaan.'),
+      props.groups.map(function (g) {
+        return e('div', { key: g.key, className: 'flex flex-col gap-2' },
+          e('div', { className: 'text-sm font-semibold' }, g.name),
+          g.templates.map(function (t) {
+            var on = keep[g.key] === t.id;
+            return e('button', { key: t.id, onClick: function () { var n = Object.assign({}, keep); n[g.key] = t.id; setKeep(n); }, className: 'text-left rounded-xl px-3 py-2 flex items-start gap-3',
+              style: on ? { background: 'var(--sage-bg)' } : { background: 'var(--bg-elevated)' } },
+              e('span', { className: 'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5', style: on ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, on ? '✓' : ''),
+              e('span', { className: 'flex-1 min-w-0' },
+                e('span', { className: 'block text-xs font-medium', style: { color: on ? 'var(--sage-strong)' : 'var(--text-secondary)' } }, (on ? 'Bewaren: ' : 'Verwijderen: ') + t.exercises.length + ' oefeningen'),
+                e('span', { className: 'block text-xs', style: { color: 'var(--text-tertiary)' } }, t.exercises.map(function (x) { return x.name; }).join(' · ') || 'geen oefeningen')
+              )
+            );
+          })
+        );
+      }),
+      toDelete.length ? e(ConfirmInline, { label: 'Verwijder ' + toDelete.length + (toDelete.length === 1 ? ' dubbel schema' : ' dubbele schema\'s'), onConfirm: function () { props.onDelete(toDelete, keep); } }) : null
+    )
+  );
+}
+
 /* Korte omschrijving van een opgeslagen workout, om dubbele te herkennen. */
 function logSummary(l) {
   var sets = 0;
@@ -87,6 +176,9 @@ export function KrachtTab(props) {
   var stAll = useState(false); var showAllLogs = stAll[0], setShowAllLogs = stAll[1];
   var stDup = useState(false); var dupOpen = stDup[0], setDupOpen = stDup[1];
   var stModal = useState(null); var nameModal = stModal[0], setNameModal = stModal[1]; // null | 'create' | 'rename'
+  var stEdit = useState(false); var editOpen = stEdit[0], setEditOpen = stEdit[1];
+  var stTplDup = useState(false); var tplDupOpen = stTplDup[0], setTplDupOpen = stTplDup[1];
+  var stOpen = useState({}); var openLogs = stOpen[0], setOpenLogs = stOpen[1]; // welke opgeslagen workouts openstaan (id -> true)
   var stSaving = useState(false); var saving = stSaving[0], setSaving = stSaving[1];
   var stMsg = useState(null); var msg = stMsg[0], setMsg = stMsg[1]; // { kind: 'ok' | 'error', text }
 
@@ -127,6 +219,43 @@ export function KrachtTab(props) {
     props.deleteStrengthTemplate(currentTemplate.id);
     props.clearStrengthDraft(currentTemplate.id);
     switchTemplate(remaining[0].id);
+  }
+
+  /* Volgorde van de schema's (de knoppen bovenaan): één plek naar links of rechts. */
+  function moveTemplate(dir) {
+    if (!currentTemplate) return;
+    var idx = templates.findIndex(function (t) { return t.id === currentTemplate.id; });
+    var j = idx + dir; if (idx < 0 || j < 0 || j >= templates.length) return;
+    var order = templates.slice(); var tmp = order[idx]; order[idx] = order[j]; order[j] = tmp;
+    props.setKrachtTemplateId(currentTemplate.id); // blijf op dit schema staan, ook na het verplaatsen
+    order.forEach(function (t, i) { if (t.sortOrder !== i) props.updateStrengthTemplate({ id: t.id, name: t.name, exercises: t.exercises, sortOrder: i }); });
+  }
+  /* Opslaan vanuit "Schema bewerken". Bij een hernoemde oefening gaan de
+     ingevulde sets van de lopende workout mee naar de nieuwe naam. */
+  function saveTemplateEdit(list, renames) {
+    if (!currentTemplate) return;
+    props.updateStrengthTemplate({ id: currentTemplate.id, name: currentTemplate.name, exercises: list, sortOrder: currentTemplate.sortOrder });
+    if (renames.length) {
+      var nd = Object.assign({}, draftData);
+      renames.forEach(function (r) { delete nd[r.from]; });
+      renames.forEach(function (r) { if (draftData[r.from]) nd[r.to] = draftData[r.from]; });
+      patchDraft({ data: nd });
+    }
+    setEditOpen(false);
+  }
+  function cleanupTemplates(ids, keep) {
+    ids.forEach(function (id) { props.deleteStrengthTemplate(id); props.clearStrengthDraft(id); });
+    var remaining = templates.filter(function (t) { return ids.indexOf(t.id) === -1; });
+    remaining.forEach(function (t, i) { if (t.sortOrder !== i) props.updateStrengthTemplate({ id: t.id, name: t.name, exercises: t.exercises, sortOrder: i }); });
+    if (ids.indexOf(props.krachtTemplateId) !== -1 || !currentTemplate || ids.indexOf(currentTemplate.id) !== -1) {
+      var cur = remaining.find(function (t) { return t.id === keep[t.name.trim().toLowerCase()]; }) || remaining[0];
+      if (cur) props.setKrachtTemplateId(cur.id);
+    }
+    setTplDupOpen(false);
+  }
+
+  function toggleLog(id) {
+    setOpenLogs(function (p) { var n = Object.assign({}, p); if (n[id]) delete n[id]; else n[id] = true; return n; });
   }
 
   function lastLogFor(name) { return strengthLastLog(props.state.strengthLogs, name); }
@@ -170,6 +299,8 @@ export function KrachtTab(props) {
     setSaving(true); setMsg(null);
     props.saveStrengthWorkout(log, linkedEntry ? linkedEntry.id : null, templateId).then(function () {
       setSaving(false);
+      setShowAllLogs(false);
+      setOpenLogs(function (p) { var n = Object.assign({}, p); n[logId] = true; return n; }); // net opgeslagen: meteen open, onderaan bij "Recente workouts"
       setMsg({ kind: 'ok', text: 'Workout opgeslagen (' + list.length + ' oefeningen)' + (linkedEntry ? ' en afgevinkt in Schema.' : '.') });
     }).catch(function (err) {
       setSaving(false);
@@ -188,6 +319,12 @@ export function KrachtTab(props) {
   var dupGroups = Object.keys(dupMap).map(function (k) { return dupMap[k]; }).filter(function (g) { return g.logs.length > 1; });
   var dupCount = 0;
   dupGroups.forEach(function (g) { dupCount += g.logs.length - 1; });
+  var tplMap = {};
+  templates.forEach(function (t) { var k = t.name.trim().toLowerCase(); if (!tplMap[k]) tplMap[k] = { key: k, name: t.name.trim(), templates: [] }; tplMap[k].templates.push(t); });
+  var tplDupGroups = Object.keys(tplMap).map(function (k) { return tplMap[k]; }).filter(function (g) { return g.templates.length > 1; });
+  var tplDupCount = 0;
+  tplDupGroups.forEach(function (g) { tplDupCount += g.templates.length - 1; });
+  var tplIndex = currentTemplate ? templates.findIndex(function (t) { return t.id === currentTemplate.id; }) : -1;
   var groups = groupBySuperset(exercises);
   var flatIdx = 0;
   var known = strengthKnownExercises(props.state.strengthLogs, templates);
@@ -196,6 +333,10 @@ export function KrachtTab(props) {
   return e('div', { className: 'flex flex-col gap-4' },
     e('h2', { className: 'font-display text-xl font-semibold text-center' }, 'Krachttraining'),
     e('p', { className: 'text-xs text-center -mt-2', style: { color: 'var(--text-tertiary)' } }, 'Log je krachttraining altijd hier. Alles wat je invult blijft bewaard tot je op "Workout opslaan" tikt. Vink elke set af als je hem hebt gedaan.'),
+    tplDupGroups.length ? e(Card, { className: 'p-3 flex items-center gap-3' },
+      e('div', { className: 'flex-1 text-xs', style: { color: 'var(--text-secondary)' } }, tplDupCount + (tplDupCount === 1 ? ' schema staat' : ' schema\'s staan') + ' dubbel in je lijst (' + tplDupGroups.map(function (g) { return g.name; }).join(', ') + ').'),
+      e(Button, { variant: 'ghost', onClick: function () { setTplDupOpen(true); } }, 'Opruimen')
+    ) : null,
     e('div', { className: 'flex gap-2 overflow-x-auto scrollbar-none' },
       templates.map(function (t) {
         var active = t.id === templateId;
@@ -206,9 +347,16 @@ export function KrachtTab(props) {
     ),
     currentTemplate ? e('div', { className: 'flex items-center justify-end -mt-2' },
       e(KebabMenu, { actions: [
+        { label: 'Schema bewerken (oefeningen)', onClick: function () { setEditOpen(true); } },
+        { label: 'Schema een plek naar links', onClick: function () { moveTemplate(-1); }, key: 'left' },
+        { label: 'Schema een plek naar rechts', onClick: function () { moveTemplate(1); }, key: 'right' },
         { label: 'Schema hernoemen', onClick: function () { setNameModal('rename'); } },
         { label: 'Schema verwijderen', danger: true, confirm: true, onClick: deleteTemplate }
-      ].filter(function (a) { return a.label !== 'Schema verwijderen' || templates.length > 1; }) })
+      ].filter(function (a) {
+        if (a.key === 'left') return tplIndex > 0;
+        if (a.key === 'right') return tplIndex >= 0 && tplIndex < templates.length - 1;
+        return a.label !== 'Schema verwijderen' || templates.length > 1;
+      }) })
     ) : null,
     currentTemplate ? e(Card, { className: 'p-3.5 flex flex-col gap-2' },
       e('div', { className: 'grid grid-cols-2 gap-3' },
@@ -269,21 +417,42 @@ export function KrachtTab(props) {
       ) : null,
       e('div', { className: 'flex flex-col gap-2' },
         recent.map(function (l) {
+          var isOpen = !!openLogs[l.id];
           return e(Card, { key: l.id, className: 'p-3' },
-            e('div', { className: 'flex items-center justify-between mb-1' },
-              e('span', { className: 'text-sm font-medium' }, l.template),
-              e('div', { className: 'flex items-center gap-1' },
-                e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateShort(l.date)),
-                e(KebabMenu, { actions: [{ label: 'Workout verwijderen', danger: true, confirm: true, onClick: function () { props.deleteStrengthLog(l.id); } }] })
-              )
+            e('div', { onClick: function () { toggleLog(l.id); }, className: 'cursor-pointer' },
+              e('div', { className: 'flex items-center justify-between mb-1' },
+                e('span', { className: 'text-sm font-medium flex items-center gap-1.5' }, e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, isOpen ? '▾' : '▸'), l.template),
+                e('div', { className: 'flex items-center gap-1' },
+                  e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateShort(l.date)),
+                  e(KebabMenu, { actions: [{ label: 'Workout verwijderen', danger: true, confirm: true, onClick: function () { props.deleteStrengthLog(l.id); } }] })
+                )
+              ),
+              l.warmupType ? e('div', { className: 'text-xs mb-1', style: { color: 'var(--text-tertiary)' } }, '🚴 Warming-up: ' + (l.warmupMinutes ? l.warmupMinutes + ' min ' : '') + l.warmupType.toLowerCase() + (l.warmupHr ? ' · ' + l.warmupHr + ' bpm' : '')) : null,
+              isOpen ? null : e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, l.exercises.map(function (x) { return x.name + ' (' + x.sets.length + ' sets)'; }).join(' · '))
             ),
-            l.warmupType ? e('div', { className: 'text-xs mb-1', style: { color: 'var(--text-tertiary)' } }, '🚴 Warming-up: ' + (l.warmupMinutes ? l.warmupMinutes + ' min ' : '') + l.warmupType.toLowerCase() + (l.warmupHr ? ' · ' + l.warmupHr + ' bpm' : '')) : null,
-            e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, l.exercises.map(function (x) { return x.name + ' (' + x.sets.length + ' sets)'; }).join(' · '))
+            isOpen ? e('div', { className: 'mt-2 pt-3 flex flex-col gap-3', style: { borderTop: '1px solid var(--border-soft)' } },
+              (l.hr != null || l.durationMin != null) ? e('div', { className: 'flex items-center flex-wrap gap-2 text-xs', style: { color: 'var(--text-secondary)' } },
+                l.durationMin != null ? e('span', {}, '⏱ ' + l.durationMin + ' min') : null,
+                l.hr != null ? e('span', {}, '❤️ ' + l.hr + ' bpm') : null,
+                l.hr != null ? e(HRZoneBadge, { hr: l.hr }) : null
+              ) : null,
+              l.exercises.map(function (x) {
+                return e('div', { key: x.name },
+                  e('div', { className: 'text-xs font-semibold mb-1.5' }, x.name),
+                  e('div', { className: 'flex flex-wrap gap-1.5' }, x.sets.map(function (st, i) {
+                    return e('span', { key: i, className: 'text-xs rounded-lg px-2 py-1', style: { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' } }, (i + 1) + '. ' + st.reps + (st.weight ? ' × ' + st.weight + ' kg' : ' reps'));
+                  })),
+                  x.note ? e('div', { className: 'text-xs mt-1.5', style: { color: 'var(--text-tertiary)' } }, x.note) : null
+                );
+              })
+            ) : null
           );
         })
       ),
       sortedLogs.length > 5 ? e('button', { onClick: function () { setShowAllLogs(!showAllLogs); }, className: 'w-full text-xs font-medium text-center pt-3', style: { color: 'var(--slate)' } }, showAllLogs ? 'Toon alleen de laatste 5' : 'Toon alle ' + sortedLogs.length + ' workouts') : null
     ) : null,
+    editOpen && currentTemplate ? e(TemplateEditorModal, { key: currentTemplate.id, exercises: exercises, onClose: function () { setEditOpen(false); }, onSave: saveTemplateEdit }) : null,
+    tplDupOpen ? e(TemplateDuplicatesModal, { groups: tplDupGroups, currentId: templateId, onClose: function () { setTplDupOpen(false); }, onDelete: cleanupTemplates }) : null,
     dupOpen ? e(DuplicatesModal, { groups: dupGroups, onClose: function () { setDupOpen(false); }, onDelete: function (ids) { ids.forEach(function (id) { props.deleteStrengthLog(id); }); setDupOpen(false); } }) : null
   );
 }

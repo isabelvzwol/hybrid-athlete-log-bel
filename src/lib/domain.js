@@ -61,13 +61,15 @@ function entryHasStrengthLog(state, x) {
   });
 }
 
-/* Warming-ups bij krachttraining: eigen duur en eigen hartslag. Een warming-up
-   zonder hartslag of zonder duur telt niet mee (zelfde regel als bij elke
-   andere sport). Ze tellen mee bij Kracht in de trainingslast. */
+/* Warming-ups en afsluitingen (fietsen, wandelen, stairmaster) bij krachttraining:
+   eigen duur en eigen hartslag. Zonder hartslag of zonder duur telt een onderdeel
+   niet mee (zelfde regel als bij elke andere sport). Ze tellen mee bij Kracht in
+   de trainingslast. */
 export function strengthWarmupSamples(state) {
   var out = [];
   state.strengthLogs.forEach(function (l) {
     if (l.warmupHr != null && l.warmupMinutes) out.push({ date: l.date, hr: l.warmupHr, timeSec: l.warmupMinutes * 60 });
+    if (l.cooldownType && l.cooldownHr != null && l.cooldownMinutes) out.push({ date: l.date, hr: l.cooldownHr, timeSec: l.cooldownMinutes * 60 });
   });
   state.scheduleEntries.filter(function (x) { return x.sport === 'Kracht' && x.completed && x.actual && !entryHasStrengthLog(state, x); }).forEach(function (x) {
     var a = x.actual;

@@ -103,6 +103,9 @@ function strengthLogFromRow(row) {
     id: row.id, date: row.date, template: row.template, exercises: row.exercises || [], hr: row.hr,
     warmupType: row.warmup_type || null, warmupMinutes: row.warmup_minutes,
     warmupHr: row.warmup_hr != null ? row.warmup_hr : null,
+    cooldownType: row.cooldown_type || null,
+    cooldownMinutes: row.cooldown_minutes != null ? row.cooldown_minutes : null,
+    cooldownHr: row.cooldown_hr != null ? row.cooldown_hr : null,
     durationMin: row.duration_minutes,
     createdAt: row.created_at || null
   };
@@ -116,6 +119,13 @@ function strengthLogToRow(log, userId) {
   // De kolom warmup_hr wordt alleen meegestuurd als er een waarde is, zodat
   // opslaan zonder WU-hartslag ook werkt als de SQL-migratie nog niet is gedraaid.
   if (log.warmupHr != null) row.warmup_hr = log.warmupHr;
+  // Idem voor de afsluiting (cooldown_type, cooldown_minutes, cooldown_hr): die
+  // kolommen worden alleen meegestuurd als je een afsluiting hebt ingevuld.
+  if (log.cooldownType) {
+    row.cooldown_type = log.cooldownType;
+    row.cooldown_minutes = log.cooldownMinutes != null ? log.cooldownMinutes : null;
+    row.cooldown_hr = log.cooldownHr != null ? log.cooldownHr : null;
+  }
   return row;
 }
 export async function dbInsertStrengthLog(userId, log) {
@@ -161,12 +171,19 @@ export async function dbDeleteStrengthTemplate(id) {
   var { error } = await supabase.from('strength_templates').delete().eq('id', id);
   assertNoError('schema verwijderen', error);
 }
+/* Maakt de standaardschema's alleen aan als dit account er echt nog géén heeft.
+   Vlak voor het schrijven wordt dat nog een keer in de database gecontroleerd,
+   zodat twee gelijktijdige starts (bv. twee tabbladen) niet allebei invoegen. */
 export async function seedDefaultStrengthTemplates(userId, defaults) {
+  var check = await supabase.from('strength_templates').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+  assertNoError('schema\'s controleren', check.error);
+  if (check.count && check.count > 0) return false;
   var rows = defaults.map(function (t, idx) {
     return templateToRow({ id: uid(), name: t.name, exercises: t.exercises.map(function (name) { return { name: name, linkToNext: false }; }), sortOrder: idx }, userId);
   });
   var { error } = await supabase.from('strength_templates').insert(rows);
   assertNoError('standaardschema\'s aanmaken', error);
+  return true;
 }
 
 /* ---------- meals (eigen maaltijden) ----------
@@ -397,15 +414,18 @@ export async function dbSeedChecklistIfEmpty(userId, defaultChecklist) {
 // hier al gestart (niet pas na de Promise.all hieronder afgewacht), zodat hij
 // gelijktijdig met de andere tabellen ophaalt in plaats van er sequentieel
 // achteraan te lopen.
+// Het resultaat zegt ook of het ophalen echt gelukt is (ok). Een mislukte
+// poging mag NOOIT gelden als "je hebt nog geen schema's", anders worden de
+// standaardschema's bij elke haperende start opnieuw aangemaakt.
 async function fetchStrengthTemplatesSafely(userId) {
   try {
     var res = await supabase.from('strength_templates').select('*').eq('user_id', userId).order('sort_order', { ascending: true });
     if (res.error) throw res.error;
-    return res.data;
+    return { rows: res.data, ok: true };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Supabase-fout bij krachtschema\'s ophalen (mogelijk migratie nog niet uitgevoerd):', err);
-    return [];
+    return { rows: [], ok: false };
   }
 }
 
@@ -462,7 +482,7 @@ export async function fetchAllData(userId) {
   ]);
   results.forEach(function (r) { assertNoError('data ophalen', r.error); });
 
-  var strengthTemplatesRows = await strengthTemplatesPromise;
+  var strengthTemplatesResult = await strengthTemplatesPromise;
   var bodyWeightLogsRows = await bodyWeightLogsPromise;
   var mealsRows = await mealsPromise;
   var mealPlanRows = await mealPlanPromise;
@@ -475,7 +495,8 @@ export async function fetchAllData(userId) {
     races: races.data.map(raceFromRow),
     scheduleEntries: entries.data.map(entryFromRow),
     strengthLogs: strength.data.map(strengthLogFromRow),
-    strengthTemplates: strengthTemplatesRows.map(templateFromRow),
+    strengthTemplates: strengthTemplatesResult.rows.map(templateFromRow),
+    strengthTemplatesLoaded: strengthTemplatesResult.ok,
     hyroxLibrary: hyroxLib.data.map(hyroxWorkoutFromRow),
     hyroxLogs: hyroxLogs.data.map(hyroxLogFromRow),
     hyroxRaceResults: hyroxRace.data.map(hyroxRaceResultFromRow),

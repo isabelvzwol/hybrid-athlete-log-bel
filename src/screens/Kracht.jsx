@@ -14,6 +14,9 @@ import { uid, todayISO, num, formatDateShort } from '../lib/helpers.js';
 import { WARMUP_TYPES } from '../lib/constants.js';
 var e = React.createElement;
 
+/* Soorten cardio voor de afsluiting aan het einde van een krachtworkout. */
+var COOLDOWN_TYPES = ['Fietsen', 'Wandelen', 'Stairmaster'];
+
 function TemplateNameModal(props) {
   var st = useState(props.initialName || ''); var name = st[0], setName = st[1];
   return e(Modal, { title: props.title, onClose: props.onClose },
@@ -291,9 +294,11 @@ export function KrachtTab(props) {
     var logId = draft.logId || uid();
     patchDraft({ logId: logId });
     var wuType = draft.warmupType || '';
+    var cdType = draft.cooldownType || '';
     var log = {
       id: logId, date: date, template: currentTemplate.name, exercises: list, hr: num(draft.hr),
       warmupType: wuType || null, warmupMinutes: wuType ? num(draft.warmupMinutes) : null, warmupHr: wuType ? num(draft.warmupHr) : null,
+      cooldownType: cdType || null, cooldownMinutes: cdType ? num(draft.cooldownMinutes) : null, cooldownHr: cdType ? num(draft.cooldownHr) : null,
       durationMin: num(draft.durationMin)
     };
     setSaving(true); setMsg(null);
@@ -329,6 +334,7 @@ export function KrachtTab(props) {
   var flatIdx = 0;
   var known = strengthKnownExercises(props.state.strengthLogs, templates);
   var wuType2 = draft.warmupType || '';
+  var cdType2 = draft.cooldownType || '';
 
   return e('div', { className: 'flex flex-col gap-4' },
     e('h2', { className: 'font-display text-xl font-semibold text-center' }, 'Krachttraining'),
@@ -404,6 +410,20 @@ export function KrachtTab(props) {
       e(Field, { label: 'Duur training (min, zonder WU)' }, e(TextInput, { type: 'number', value: draft.durationMin != null ? draft.durationMin : '', onChange: setField('durationMin') }))
     ),
     draft.hr ? e(HRZoneBadge, { hr: num(draft.hr) }) : null,
+    e(Card, { className: 'p-3.5' },
+      e('div', { className: 'text-sm font-semibold mb-2' }, '🚶 Afsluiting na de training (optioneel)'),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Type' }, e('select', { value: cdType2, onChange: setField('cooldownType') },
+          [e('option', { key: '', value: '' }, 'Geen')].concat(COOLDOWN_TYPES.map(function (w) { return e('option', { key: w, value: w }, w); }))
+        )),
+        e(Field, { label: 'Duur (min)' }, e(TextInput, { type: 'number', value: draft.cooldownMinutes != null ? draft.cooldownMinutes : '', onChange: setField('cooldownMinutes'), disabled: !cdType2 }))
+      ),
+      e('div', { className: 'mt-3' },
+        e(Field, { label: 'Gem. hartslag afsluiting (bpm)' }, e(TextInput, { type: 'number', value: draft.cooldownHr != null ? draft.cooldownHr : '', onChange: setField('cooldownHr'), disabled: !cdType2 }))
+      ),
+      cdType2 && draft.cooldownHr ? e('div', { className: 'mt-2' }, e(HRZoneBadge, { hr: num(draft.cooldownHr) })) : null,
+      cdType2 ? e('p', { className: 'text-xs mt-2', style: { color: 'var(--text-tertiary)' } }, 'De afsluiting telt mee in je trainingslast, op basis van deze duur en hartslag. Zonder hartslag telt hij niet mee.') : null
+    ),
     msg ? e('div', { className: 'rounded-xl px-3 py-2.5 text-xs font-semibold', style: msg.kind === 'ok' ? { background: 'var(--sage-bg)', color: 'var(--sage-strong)' } : { background: 'var(--danger-bg)', color: 'var(--danger)' } }, msg.text) : null,
     e(Button, { onClick: saveWorkout, disabled: saving, className: 'w-full' }, saving ? 'Opslaan…' : 'Workout opslaan (' + doneSetCount + ' ' + (doneSetCount === 1 ? 'set' : 'sets') + ' afgevinkt)'),
     chartExercise ? e(StrengthChartModal, { name: chartExercise, strengthLogs: props.state.strengthLogs, onClose: function () { setChartExercise(null); } }) : null,
@@ -428,6 +448,7 @@ export function KrachtTab(props) {
                 )
               ),
               l.warmupType ? e('div', { className: 'text-xs mb-1', style: { color: 'var(--text-tertiary)' } }, '🚴 Warming-up: ' + (l.warmupMinutes ? l.warmupMinutes + ' min ' : '') + l.warmupType.toLowerCase() + (l.warmupHr ? ' · ' + l.warmupHr + ' bpm' : '')) : null,
+              l.cooldownType ? e('div', { className: 'text-xs mb-1', style: { color: 'var(--text-tertiary)' } }, '🚶 Afsluiting: ' + (l.cooldownMinutes ? l.cooldownMinutes + ' min ' : '') + l.cooldownType.toLowerCase() + (l.cooldownHr ? ' · ' + l.cooldownHr + ' bpm' : '')) : null,
               isOpen ? null : e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, l.exercises.map(function (x) { return x.name + ' (' + x.sets.length + ' sets)'; }).join(' · '))
             ),
             isOpen ? e('div', { className: 'mt-2 pt-3 flex flex-col gap-3', style: { borderTop: '1px solid var(--border-soft)' } },

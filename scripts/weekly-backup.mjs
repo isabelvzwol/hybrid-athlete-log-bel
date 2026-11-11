@@ -50,6 +50,10 @@ var TABLES = [
   'complaint_logs',
   'body_weight_logs',
   'triathlon_checklist_items',
+  'meals',
+  'meal_plan',
+  'meal_products',
+  'meal_shopping',
 ];
 
 async function fetchTable(table) {

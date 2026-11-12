@@ -8,8 +8,11 @@
      laatste week de raceweek is.
    - Alleen hardloopruns tellen mee, plus het looponderdeel van een Brick.
    - "Gedaan" telt alleen de afstand die je echt hebt gelogd bij afronden.
-   - Voorspelde eindtijd: Riegel-formule (T2 = T1 x (42,195 / D1)^1,06) op
-     je recente races van 10 km of langer. Dit is een indicatie.
+   - Voorspelde eindtijd: hartslagmethode. Van je gelijkmatige runs uit de
+     laatste 8 weken bepalen we het verband tussen hartslag en tempo (een
+     rechte lijn). Daaruit volgt het tempo op marathonhartslag (MARATHON_HR,
+     met een kleine marge HR_BAND erboven en eronder). Intervallen en runs
+     met een tempoblok of warming-up tellen niet mee.
    - De doeltijd staat bij de race (Doelen -> Races -> Bewerken). */
 import React, { useState } from 'react';
 import { Card, Badge } from '../components/ui.jsx';
@@ -21,7 +24,10 @@ var e = React.createElement;
 var PLAN_WEEKS = 22;
 var RUN_SPORTS = ['Hardlopen', 'Brick'];
 var MARATHON_KM = 42.195;
-var PREDICTION_DAYS = 180;
+var MARATHON_HR = 160;
+var HR_BAND = 2;
+var WINDOW_DAYS = 56;
+var MIN_RUNS = 6;
 
 /* De eerstvolgende race met type "Marathon". Is er geen aankomende, dan de
    meest recente afgelopen, zodat het overzicht na de race nog te bekijken is. */
@@ -63,27 +69,73 @@ function phaseOf(label) {
   return m ? m[1] : 'Opbouw';
 }
 
-/* Recente race-uitslagen (10 km of langer) en de marathontijd die daarbij
-   past volgens Riegel. Bronnen: je records (PRs) en afgeronde runs op de
-   dag van een race. */
-function racePredictions(state) {
-  var since = addDays(todayISO(), -PREDICTION_DAYS);
-  var out = [];
-  (state.runRaceResults || []).forEach(function (r) {
-    var sec = parseDuration(r.time);
-    if (r.km >= 10 && sec && r.date >= since) out.push({ date: r.date, km: r.km, sec: sec, label: (r.km === 21.1 ? 'Halve marathon' : fmtKm(r.km) + ' km') });
-  });
-  var raceByDate = {};
-  (state.races || []).forEach(function (r) { raceByDate[r.date] = r; });
+/* Is dit een gelijkmatige run? Intervallen, progressieve runs en runs met
+   een warming-up of een tweede tempoblok hebben een gemiddelde dat een mix
+   is van rustig en snel, en die laten we weg. Een wedstrijd op een vast
+   tempo telt wel mee: de spanning duwt de hartslag iets omhoog, wat de
+   voorspelling iets voorzichtiger maakt. */
+function isSteadyRun(x) {
+  var txt = ((x.type || '') + ' ' + (x.plannedText || '')).toLowerCase();
+  if (/interval|progressie|progressief|shake|\bwu\b|\bcd\b|warming|\d\s*x\s*\d/.test(txt)) return false;
+  if ((txt.match(/@/g) || []).length >= 2) return false;
+  return true;
+}
+
+/* Hartslagmethode: rechte lijn door (hartslag, tempo) van je gelijkmatige
+   runs uit de laatste WINDOW_DAYS dagen, en daarmee het tempo op
+   marathonhartslag. */
+function hrPrediction(state) {
+  var since = addDays(todayISO(), -WINDOW_DAYS);
+  var pts = [];
   (state.scheduleEntries || []).forEach(function (x) {
-    if (x.sport !== 'Hardlopen' || !x.completed || !x.actual || !raceByDate[x.date] || x.date < since) return;
-    var km = Number(x.actual.distance), sec = parseDuration(x.actual.time);
-    if (!(km >= 10) || !sec) return;
-    if (out.some(function (o) { return o.date === x.date; })) return;
-    out.push({ date: x.date, km: km, sec: sec, label: raceByDate[x.date].name });
+    if (x.sport !== 'Hardlopen' || !x.completed || !x.actual || x.date < since || x.date > todayISO()) return;
+    var a = x.actual;
+    var hr = Number(a.hr), km = Number(a.distance), sec = parseDuration(a.time);
+    var pace = parseDuration(a.pace) || (sec && km ? sec / km : null);
+    if (!(hr >= 110 && hr <= 190) || !(km >= 3) || !pace) return;
+    if (!isSteadyRun(x)) return;
+    pts.push({ hr: hr, pace: pace, date: x.date });
   });
-  out.forEach(function (o) { o.predicted = o.sec * Math.pow(MARATHON_KM / o.km, 1.06); });
-  return out.sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 3);
+  var n = pts.length;
+  if (n < MIN_RUNS) return { ok: false, n: n, pts: pts };
+  var mx = pts.reduce(function (t, p) { return t + p.hr; }, 0) / n;
+  var my = pts.reduce(function (t, p) { return t + p.pace; }, 0) / n;
+  var sxx = 0, sxy = 0;
+  pts.forEach(function (p) { sxx += (p.hr - mx) * (p.hr - mx); sxy += (p.hr - mx) * (p.pace - my); });
+  var minHr = Math.min.apply(null, pts.map(function (p) { return p.hr; }));
+  var maxHr = Math.max.apply(null, pts.map(function (p) { return p.hr; }));
+  if (sxx === 0 || maxHr - minHr < 8) return { ok: false, n: n, pts: pts, spread: true };
+  var slope = sxy / sxx, icept = my - slope * mx;
+  function paceAt(h) { return icept + slope * h; }
+  return {
+    ok: true, n: n, pts: pts, slope: slope, icept: icept, minHr: minHr, maxHr: maxHr,
+    pace: paceAt(MARATHON_HR), fast: paceAt(MARATHON_HR + HR_BAND), slow: paceAt(MARATHON_HR - HR_BAND),
+    time: paceAt(MARATHON_HR) * MARATHON_KM, timeFast: paceAt(MARATHON_HR + HR_BAND) * MARATHON_KM, timeSlow: paceAt(MARATHON_HR - HR_BAND) * MARATHON_KM,
+    extrapolated: MARATHON_HR > maxHr
+  };
+}
+
+/* Puntenwolk hartslag tegen tempo, met de lijn en de marathonhartslag. */
+function HrPaceChart(props) {
+  var p = props.pred;
+  var w = 300, h = 140, pad = 22;
+  var hrs = p.pts.map(function (x) { return x.hr; }).concat([MARATHON_HR + HR_BAND, MARATHON_HR - HR_BAND]);
+  var paces = p.pts.map(function (x) { return x.pace; }).concat([p.fast, p.slow]);
+  var x0 = Math.min.apply(null, hrs) - 3, x1 = Math.max.apply(null, hrs) + 3;
+  var y0 = Math.min.apply(null, paces) - 10, y1 = Math.max.apply(null, paces) + 10;
+  function X(v) { return pad + (v - x0) / (x1 - x0) * (w - pad - 6); }
+  function Y(v) { return 6 + (v - y0) / (y1 - y0) * (h - pad - 6); }
+  return e('svg', { viewBox: '0 0 ' + w + ' ' + h, style: { width: '100%', height: h + 'px' } },
+    e('rect', { x: X(MARATHON_HR - HR_BAND), y: 6, width: X(MARATHON_HR + HR_BAND) - X(MARATHON_HR - HR_BAND), height: h - pad - 6, fill: 'var(--amber-bg)' }),
+    e('line', { x1: X(x0), y1: Y(p.icept + p.slope * x0), x2: X(x1), y2: Y(p.icept + p.slope * x1), stroke: 'var(--slate)', strokeWidth: 1.5 }),
+    p.pts.map(function (pt, i) { return e('circle', { key: i, cx: X(pt.hr), cy: Y(pt.pace), r: 3, fill: 'var(--sage)' }); }),
+    e('circle', { cx: X(MARATHON_HR), cy: Y(p.pace), r: 4, fill: 'var(--amber)' }),
+    e('text', { x: X(MARATHON_HR), y: h - 6, fontSize: '8', textAnchor: 'middle', fill: 'var(--text-tertiary)' }, 'HR ' + MARATHON_HR),
+    e('text', { x: pad, y: h - 6, fontSize: '8', fill: 'var(--text-tertiary)' }, 'HR ' + Math.round(x0)),
+    e('text', { x: w - 4, y: h - 6, fontSize: '8', textAnchor: 'end', fill: 'var(--text-tertiary)' }, 'HR ' + Math.round(x1)),
+    e('text', { x: 2, y: 12, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y0)),
+    e('text', { x: 2, y: h - pad, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y1))
+  );
 }
 
 function buildWeeks(state, goal) {
@@ -245,8 +297,7 @@ export function MarathonView(props) {
   var daysLeft = daysBetween(todayISO(), goal.date);
   var goalTime = goal.result && goal.result.goalTime ? goal.result.goalTime : null;
   var goalSec = parseDuration(goalTime);
-  var predictions = racePredictions(s);
-  var latest = predictions[0] || null;
+  var pred = hrPrediction(s);
   var phase = current ? phaseOf(current.label) : (todayISO() < weeks[0].monday ? 'Nog niet begonnen' : 'Afgerond');
   var longPoints = weeks.map(function (w) { return { label: 'wk ' + (w.index + 1), value: w.longestPlanned }; });
   var openEntry = openEntryId ? s.scheduleEntries.find(function (x) { return x.id === openEntryId; }) : null;
@@ -277,24 +328,27 @@ export function MarathonView(props) {
         ),
         e('div', { className: 'rounded-xl p-3', style: { background: 'var(--bg-inset)' } },
           e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Voorspelling'),
-          e('div', { className: 'font-display text-lg font-semibold', style: { color: latest && goalSec && latest.predicted > goalSec ? 'var(--amber)' : 'var(--sage-strong)' } }, latest ? formatDuration(latest.predicted, true) : '—'),
-          e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, latest ? 'op basis van ' + latest.label : 'nog geen recente race')
+          e('div', { className: 'font-display text-lg font-semibold', style: { color: pred.ok && goalSec && pred.time > goalSec ? 'var(--amber)' : 'var(--sage-strong)' } }, pred.ok ? formatDuration(pred.time, true) : '—'),
+          e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, pred.ok ? formatDuration(pred.timeFast, true) + ' tot ' + formatDuration(pred.timeSlow, true) : 'nog te weinig runs')
         )
       ),
       e('div', { className: 'flex items-center justify-between mt-3 text-xs', style: { color: 'var(--text-secondary)' } },
         e('span', {}, 'Fase: ' + phase + (current ? ' · ' + current.label.replace(/\s*\(.*\)/, '') : '')),
         e('span', {}, fmtKm(totalDone) + ' / ' + fmtKm(totalPlanned) + ' km · ' + runsDone + '/' + allRuns.length + ' runs' + (runsMissed ? ' · ' + runsMissed + ' gemist' : ''))
       ),
-      predictions.length ? e('div', { className: 'mt-3 pt-3', style: { borderTop: '1px solid var(--border-soft)' } },
-        predictions.map(function (p, i) {
-          return e('div', { key: i, className: 'flex items-center justify-between text-xs py-0.5' },
-            e('span', { style: { color: 'var(--text-secondary)' } }, p.label + ' · ' + formatDateWithYear(p.date) + ' · ' + formatDuration(p.sec, true)),
-            e('span', { className: 'font-semibold' }, formatDuration(p.predicted, true))
-          );
-        }),
-        latest && diffLabel(latest.predicted) ? e('div', { className: 'text-xs mt-1', style: { color: 'var(--text-secondary)' } }, 'Laatste voorspelling: ' + diffLabel(latest.predicted) + '.') : null,
-        e('div', { className: 'text-[11px] mt-1', style: { color: 'var(--text-tertiary)' } }, 'Indicatie. Een marathon valt vaak trager uit dan deze formule. Liep je een race niet voluit, dan is de voorspelling juist te traag.')
-      ) : null
+      e('div', { className: 'mt-3 pt-3', style: { borderTop: '1px solid var(--border-soft)' } },
+        pred.ok ? e('div', { className: 'flex flex-col gap-1' },
+          e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } },
+            'Op HR ' + MARATHON_HR + ' loop je ongeveer ' + formatDuration(pred.pace) + '/km (HR ' + (MARATHON_HR - HR_BAND) + ' tot ' + (MARATHON_HR + HR_BAND) + ': ' + formatDuration(pred.slow) + ' tot ' + formatDuration(pred.fast) + '/km).' + (diffLabel(pred.time) ? ' Dat is ' + diffLabel(pred.time) + '.' : '')),
+          e(HrPaceChart, { pred: pred }),
+          e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } },
+            'Op basis van ' + pred.n + ' gelijkmatige runs uit de laatste 8 weken (hartslag ' + pred.minHr + ' tot ' + pred.maxHr + '). Intervallen en runs met een tempoblok tellen niet mee. ' +
+            (pred.extrapolated ? 'Let op: je hebt nog geen gelijkmatige runs rond HR ' + MARATHON_HR + ', dus dit is doorgetrokken. ' : '') +
+            'In een marathon stijgt je hartslag geleidelijk bij hetzelfde tempo, dus zie dit als de snelle kant van wat haalbaar is.')
+        ) : e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } },
+          pred.spread ? 'Je runs uit de laatste 8 weken hebben bijna allemaal dezelfde hartslag. Voor een voorspelling zijn ook rustige runs en snellere gelijkmatige runs nodig.'
+            : 'Nog ' + (MIN_RUNS - pred.n) + ' gelijkmatige runs met tempo en hartslag nodig voor een voorspelling (laatste 8 weken).')
+      )
     ),
 
     /* 2. Signalen (alleen als er iets is) */

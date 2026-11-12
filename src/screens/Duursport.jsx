@@ -1,5 +1,7 @@
-/* ---------------- Duursport-tab ----------------
-   1-op-1 overgenomen uit de originele hybrid-athlete-app.html. */
+/* ---------------- Duursport (archief en hartslagzones) ----------------
+   1-op-1 overgenomen uit de originele hybrid-athlete-app.html. Staat nu
+   onder Doelen -> Prestaties. Met hideTriathlon: true verdwijnt de knop
+   Triatlon; de triatlon-checklist staat dan onder Doelen -> Races. */
 import React, { useState } from 'react';
 import { Card, Badge, Button, TextInput, SegTabs, ConfirmInline } from '../components/ui.jsx';
 import { SimpleLineChart, HRZoneBadge } from '../components/charts.jsx';
@@ -156,7 +158,7 @@ function ChecklistSection(props) {
     )
   );
 }
-function TriathlonChecklistView(props) {
+export function TriathlonChecklistView(props) {
   var cl = props.checklist;
   return e('div', { className: 'flex flex-col gap-2' },
     e('div', { className: 'flex justify-end' }, e(ConfirmInline, { label: 'Alles resetten', onConfirm: props.onReset })),
@@ -198,7 +200,7 @@ export function DuursportTab(props) {
   }
   return e('div', { className: 'flex flex-col gap-4' },
     e('h2', { className: 'font-display text-xl font-semibold text-center' }, 'Duursport'),
-    e(SegTabs, { value: view, onChange: setView, options: [{ value: 'archief', label: 'Archief' }, { value: 'zones', label: 'Hartslagzones' }, { value: 'triatlon', label: 'Triatlon' }] }),
+    e(SegTabs, { value: view, onChange: setView, options: [{ value: 'archief', label: 'Archief' }, { value: 'zones', label: 'Hartslagzones' }].concat(props.hideTriathlon ? [] : [{ value: 'triatlon', label: 'Triatlon' }]) }),
     view === 'archief' ? e('div', { className: 'flex flex-col gap-4' },
       e('p', { className: 'text-xs text-center', style: { color: 'var(--text-tertiary)' } }, 'Alle sessies log je via Schema — hier zie je het overzicht terug.'),
       e('div', { className: 'flex gap-2 overflow-x-auto scrollbar-none' }, sports.map(function (s) {

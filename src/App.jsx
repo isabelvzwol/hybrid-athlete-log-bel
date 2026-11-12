@@ -16,9 +16,8 @@ import { SchemaTab } from './screens/Schema.jsx';
 import { KrachtTab } from './screens/Kracht.jsx';
 import { MealsTab } from './screens/Maaltijden.jsx';
 import { HyroxTab } from './screens/Hyrox.jsx';
-import { DuursportTab } from './screens/Duursport.jsx';
-import { PRTab } from './screens/PRs.jsx';
-import { GezondheidTab } from './screens/Gezondheid.jsx';
+import { DoelenTab } from './screens/Doelen.jsx';
+import { SegTabs } from './components/ui.jsx';
 import { SearchModal, SettingsModal, AnnualRecapModal } from './screens/SearchAndSettings.jsx';
 import { LogTrainingModal } from './components/scheduling.jsx';
 var e = React.createElement;
@@ -53,6 +52,10 @@ function AppInner(props) {
   var stLoading = useState(true); var loading = stLoading[0], setLoading = stLoading[1];
   var stEmpty = useState(false); var hasNoData = stEmpty[0], setHasNoData = stEmpty[1];
   var st2 = useState('home'); var tab = st2[0], setTab = st2[1];
+  /* Welk onderdeel open staat binnen Kracht (kracht/hyrox) en Doelen
+     (marathon/races/prestaties). */
+  var stKv = useState('kracht'); var krachtView = stKv[0], setKrachtView = stKv[1];
+  var stDv = useState('marathon'); var doelenView = stDv[0], setDoelenView = stDv[1];
   var st3 = useState(false); var settingsOpen = st3[0], setSettingsOpen = st3[1];
   var st4 = useState(false); var searchOpen = st4[0], setSearchOpen = st4[1];
   var st5 = useState(null); var searchLogEntry = st5[0], setSearchLogEntry = st5[1];
@@ -227,6 +230,7 @@ function AppInner(props) {
     if (!t) return;
     setKrachtTemplateId(t.id);
     patchStrengthDraft(t.id, { date: entry.date, entryId: entry.id });
+    setKrachtView('kracht');
     setTab('kracht');
   }
   useEffect(function () {
@@ -438,14 +442,33 @@ function AppInner(props) {
   }
 
   var content;
-  if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, updateRace: updateRace, deleteRace: deleteRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood, onOpenRecap: function () { setRecapOpen(true); } });
+  if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood,
+    addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight,
+    onOpenMarathon: function () { setDoelenView('marathon'); setTab('doelen'); },
+    onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, addRace: addRace });
+  else if (tab === 'doelen') content = e(DoelenTab, { state: state, view: doelenView, setView: setDoelenView,
+    completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog,
+    addRace: addRace, updateRace: updateRace, deleteRace: deleteRace,
+    toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist,
+    addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs,
+    addEnduranceLog: addEnduranceLog, deleteEnduranceLog: deleteEnduranceLog });
   else if (tab === 'eten') content = e(MealsTab, { state: state, addMeal: addMeal, updateMeal: updateMeal, deleteMeal: deleteMeal, saveMealDay: saveMealDay, clearMealDay: clearMealDay, saveShopping: saveShopping, saveProducts: saveProducts });
-  else if (tab === 'kracht') content = e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, deleteStrengthLog: deleteStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate });
-  else if (tab === 'hyrox') content = e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult });
-  else if (tab === 'duursport') content = e(DuursportTab, { state: state, addEnduranceLog: addEnduranceLog, deleteEntry: deleteEntry, deleteEnduranceLog: deleteEnduranceLog, toggleChecklistItem: toggleChecklistItem, addChecklistItem: addChecklistItem, removeChecklistItem: removeChecklistItem, resetChecklist: resetChecklist });
-  else if (tab === 'prs') content = e(PRTab, { state: state, addHyroxRaceResult: addHyroxRaceResult, addRunRaceResult: addRunRaceResult, updateRunRaceResult: updateRunRaceResult, deleteRunRaceResult: deleteRunRaceResult, updateHyroxRaceResult: updateHyroxRaceResult, deleteHyroxRaceResult: deleteHyroxRaceResult, seedMyPRs: seedMyPRs });
-  else if (tab === 'gezondheid') content = e(GezondheidTab, { state: state, addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight });
+  else if (tab === 'kracht') content = e('div', { className: 'flex flex-col gap-4' },
+    e(SegTabs, { value: krachtView, onChange: setKrachtView, options: [{ value: 'kracht', label: 'Kracht' }, { value: 'hyrox', label: 'Hyrox' }] }),
+    krachtView === 'hyrox'
+      ? e(HyroxTab, { state: state, addHyroxLog: addHyroxLog, logHyroxSession: logHyroxSession, addHyroxWorkout: addHyroxWorkout, updateHyroxWorkout: updateHyroxWorkout, deleteHyroxWorkout: deleteHyroxWorkout, addHyroxRaceResult: addHyroxRaceResult })
+      : e(KrachtTab, { state: state, addStrengthLog: addStrengthLog, deleteStrengthLog: deleteStrengthLog, krachtTemplateId: krachtTemplateId, setKrachtTemplateId: setKrachtTemplateId, strengthDrafts: strengthDrafts, patchStrengthDraft: patchStrengthDraft, clearStrengthDraft: clearStrengthDraft, saveStrengthWorkout: saveStrengthWorkout, addStrengthTemplate: addStrengthTemplate, updateStrengthTemplate: updateStrengthTemplate, deleteStrengthTemplate: deleteStrengthTemplate })
+  );
+
+  /* Vanuit Zoeken naar de juiste plek springen. */
+  function goToKind(kind) {
+    if (kind === 'strength') { setKrachtView('kracht'); setTab('kracht'); }
+    else if (kind === 'hyrox' || kind === 'hyroxLib') { setKrachtView('hyrox'); setTab('kracht'); }
+    else if (kind === 'endurance') { setDoelenView('prestaties'); setTab('doelen'); }
+    else if (kind === 'race') { setDoelenView('races'); setTab('doelen'); }
+    else setTab('home');
+  }
 
   return e('div', { className: 'min-h-screen flex flex-col', style: { background: 'var(--bg-app)' } },
     criticalErrorMsg ? e('div', { className: 'sticky top-0 z-50 px-4 py-3 text-xs font-semibold flex items-start gap-2', style: { background: 'var(--danger)', color: '#2A0E0E' } },
@@ -474,7 +497,7 @@ function AppInner(props) {
     settingsOpen ? e(SettingsModal, { onClose: function () { setSettingsOpen(false); }, exportData: exportData, importData: importData, hasNoData: hasNoData, loadDemoData: loadDemoData, signOut: signOut }) : null,
     searchOpen ? e(SearchModal, { state: state, onClose: function () { setSearchOpen(false); },
       onOpenEntry: function (entry) { setSearchOpen(false); setSearchLogEntry(entry); },
-      onGoTo: function (kind) { setSearchOpen(false); setTab(kind === 'strength' ? 'kracht' : kind === 'hyrox' || kind === 'hyroxLib' ? 'hyrox' : kind === 'endurance' ? 'duursport' : 'home'); } }) : null,
+      onGoTo: function (kind) { setSearchOpen(false); goToKind(kind); } }) : null,
     searchLogEntry ? e(LogTrainingModal, { entry: searchLogEntry, onClose: function () { setSearchLogEntry(null); },
       onSave: function (id, actual) { completeEntry(id, actual); setSearchLogEntry(null); },
       onUncomplete: uncompleteEntry, onUpdateEntry: updateEntry, onDeleteEntry: deleteEntry, strengthLogs: state.strengthLogs, strengthTemplates: state.strengthTemplates, onSaveStrengthLog: addStrengthLog, hyroxLibrary: state.hyroxLibrary, onSaveHyroxLog: addHyroxLog }) : null,

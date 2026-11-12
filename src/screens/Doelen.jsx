@@ -3,7 +3,8 @@
    - Marathon: overzicht van het marathonschema (zie Marathon.jsx).
    - Races: aankomende wedstrijden, wedstrijdgeschiedenis en de
      triatlon-checklist. De race-onderdelen hieronder stonden eerst op Home
-     en zijn ongewijzigd hierheen verplaatst.
+     en zijn ongewijzigd hierheen verplaatst. RaceCard en RaceModal worden
+     ook op Home gebruikt (lijst met aankomende races).
    - Prestaties: records (PRs) en het duursport-archief met hartslagzones. */
 import React, { useState } from 'react';
 import { Card, Badge, Button, Field, TextInput, Modal, ConfirmInline, KebabMenu, SegTabs } from '../components/ui.jsx';
@@ -14,7 +15,7 @@ import { PRTab } from './PRs.jsx';
 import { DuursportTab, TriathlonChecklistView } from './Duursport.jsx';
 var e = React.createElement;
 
-function RaceCard(props) {
+export function RaceCard(props) {
   var race = props.race;
   var d = daysBetween(todayISO(), race.date);
   var label = d > 0 ? d + ' dagen' : (d === 0 ? 'Vandaag!' : 'Geweest');
@@ -104,7 +105,7 @@ function RaceForm(props) {
     e(Button, { onClick: function () { if (!f.name || !f.date) return; props.onSave(f); }, className: 'w-full mt-1' }, props.saveLabel || 'Wedstrijd opslaan')
   );
 }
-function RaceModal(props) {
+export function RaceModal(props) {
   var st = useState(props.startEditing || false); var editing = st[0], setEditing = st[1];
   var race = props.race;
   if (editing) {

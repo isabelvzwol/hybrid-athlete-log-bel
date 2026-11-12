@@ -406,4 +406,12 @@ export function WeekBlock(props) {
           e('td', { className: 'px-3.5 py-2.5' },
             r.entry ? e('div', { className: 'flex items-center gap-2' },
               e('span', {}, SPORT_ICON[r.entry.sport] || '•'),
-              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' :
+              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' : '') + r.entry.type + (r.entry.plannedText && r.entry.plannedText !== r.entry.type ? (': ' + r.entry.plannedText) : '')),
+              r.entry.completed ? e('span', { className: 'w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0', style: { background: 'var(--sage)', color: '#12180F' } }, '✓') : null
+            ) : (dayRace ? e('span', { className: 'font-medium' }, '🏁 ' + dayRace.name) : e('span', { style: { color: 'var(--text-tertiary)' } }, 'Rust'))
+          )
+        );
+      }))
+    )
+  );
+}

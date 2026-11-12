@@ -444,7 +444,8 @@ function AppInner(props) {
   var content;
   if (tab === 'home') content = e(Home, { state: state, setTab: setTab, addRace: addRace, addEntry: addEntry, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, setMood: setMood,
     addComplaint: addComplaint, deleteComplaint: deleteComplaint, saveBodyWeight: saveBodyWeight, deleteBodyWeight: deleteBodyWeight,
-    onOpenMarathon: function () { setDoelenView('marathon'); setTab('doelen'); },
+    updateRace: updateRace, deleteRace: deleteRace,
+    onOpenRaces: function () { setDoelenView('races'); setTab('doelen'); },
     onOpenRecap: function () { setRecapOpen(true); } });
   else if (tab === 'schema') content = e(SchemaTab, { state: state, completeEntry: completeEntry, uncompleteEntry: uncompleteEntry, addEntry: addEntry, updateEntry: updateEntry, deleteEntry: deleteEntry, addStrengthLog: addStrengthLog, addHyroxLog: addHyroxLog, addRace: addRace });
   else if (tab === 'doelen') content = e(DoelenTab, { state: state, view: doelenView, setView: setDoelenView,

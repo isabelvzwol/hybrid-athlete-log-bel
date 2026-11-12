@@ -190,6 +190,9 @@ export function LogTrainingModal(props) {
     runHr: (a.run && a.run.hr != null) ? a.run.hr : '',
     gels: a.gels != null ? a.gels : ''
   });
+  /* Vinkje "niet meetellen voor de voorspelling" (Marathon-pagina), voor
+     uitzonderingen zoals een run op strand, in de heuvels of in de hitte. */
+  var stNoPred = useState(!!a.excludeFromPrediction); var noPred = stNoPred[0], setNoPred = stNoPred[1];
   /* Aantal gels alleen vragen bij een long run of wedstrijd. */
   var askGels = isHardlopen && (entry.type === 'Long run' || entry.type === 'Race day' || (props.races || []).some(function (r) { return r.date === entry.date; }));
   var f = st[0], setF = st[1];
@@ -222,6 +225,7 @@ export function LogTrainingModal(props) {
     } else if (isHardlopen) {
       actual = { distance: num(f.distance), time: f.time, hr: num(f.hr), runType: f.runType, pace: (parseDuration(f.time) && num(f.distance)) ? formatDuration(parseDuration(f.time) / num(f.distance)) : null, note: f.note };
       if (askGels && num(f.gels) != null) actual.gels = num(f.gels);
+      if (noPred) actual.excludeFromPrediction = true;
     } else {
       actual = { distance: num(f.distance), time: f.time, pace: f.pace, hr: num(f.hr), note: f.note };
     }
@@ -345,6 +349,10 @@ export function LogTrainingModal(props) {
       ),
       f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
       askGels ? e(Field, { label: 'Aantal gels genomen' }, e(TextInput, { type: 'number', placeholder: 'bv. 3', value: f.gels, onChange: set('gels') })) : null,
+      e('button', { onClick: function () { setNoPred(!noPred); }, className: 'flex items-center gap-2 text-left' },
+        e('span', { className: 'w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0', style: noPred ? { background: 'var(--sage)', color: '#12180F' } : { border: '1.5px solid var(--border)' } }, noPred ? '✓' : ''),
+        e('span', { className: 'text-sm' }, 'Niet meetellen voor de voorspelling')
+      ),
       e(Field, { label: 'Notitie / gevoel' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') })),
       preview ? e(Badge, { tone: 'sage' }, preview) : null
     ) : e('div', { className: 'flex flex-col gap-3' },
@@ -398,12 +406,4 @@ export function WeekBlock(props) {
           e('td', { className: 'px-3.5 py-2.5' },
             r.entry ? e('div', { className: 'flex items-center gap-2' },
               e('span', {}, SPORT_ICON[r.entry.sport] || '•'),
-              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' : '') + r.entry.type + (r.entry.plannedText && r.entry.plannedText !== r.entry.type ? (': ' + r.entry.plannedText) : '')),
-              r.entry.completed ? e('span', { className: 'w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0', style: { background: 'var(--sage)', color: '#12180F' } }, '✓') : null
-            ) : (dayRace ? e('span', { className: 'font-medium' }, '🏁 ' + dayRace.name) : e('span', { style: { color: 'var(--text-tertiary)' } }, 'Rust'))
-          )
-        );
-      }))
-    )
-  );
-}
+              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' :

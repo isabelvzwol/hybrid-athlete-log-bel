@@ -251,4 +251,159 @@ export function LogTrainingModal(props) {
       ),
       e(KebabMenu, { actions: [
         { label: 'Training bewerken', onClick: function () { setEditingPlan(true); } },
-        { label: 'Verplaatsen naar andere dag', onClick: function () {
+        { label: 'Verplaatsen naar andere dag', onClick: function () { setMoveDate(entry.date); setMovingDate(true); } },
+        { label: 'Training verwijderen', danger: true, confirm: true, onClick: function () { props.onDeleteEntry(entry.id); props.onClose(); } }
+      ] })
+    ),
+    e('p', { className: 'text-xs mb-4', style: { color: 'var(--text-tertiary)' } }, entry.plannedText || 'Geen omschrijving'),
+    isKracht ? e('div', { className: 'flex flex-col gap-3' },
+      krachtTemplate && !entry.completed ? e(Card, { className: 'p-3.5 flex flex-col gap-2' },
+        e('div', { className: 'text-sm font-semibold' }, '🏋️ Sets, herhalingen en gewichten'),
+        e('p', { className: 'text-xs', style: { color: 'var(--text-secondary)' } }, 'Die log je in de Kracht-tab. Zodra je daar opslaat, wordt deze training hier automatisch afgevinkt.'),
+        e(Button, { onClick: function () { props.onClose(); window.dispatchEvent(new CustomEvent('hal-start-strength', { detail: entry })); } }, 'Start in Kracht-tab')
+      ) : e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Sets, herhalingen en gewichten log je in de Kracht-tab. Hier kun je hartslag, duur en warming-up invullen of aanpassen.'),
+      e(Card, { className: 'p-3.5' },
+        e('div', { className: 'text-sm font-semibold mb-2' }, '🚴 Warming-up (optioneel)'),
+        e('div', { className: 'grid grid-cols-2 gap-3' },
+          e(Field, { label: 'Type' }, e('select', { value: warmupType, onChange: function (ev) { setWarmupType(ev.target.value); } },
+            [e('option', { key: '', value: '' }, 'Geen')].concat(WARMUP_TYPES.map(function (w) { return e('option', { key: w, value: w }, w); }))
+          )),
+          e(Field, { label: 'Duur WU (min)' }, e(TextInput, { type: 'number', value: warmupMinutes, onChange: function (ev) { setWarmupMinutes(ev.target.value); }, disabled: !warmupType }))
+        ),
+        e('div', { className: 'mt-3' },
+          e(Field, { label: 'Gem. hartslag WU (bpm)' }, e(TextInput, { type: 'number', value: warmupHr, onChange: function (ev) { setWarmupHr(ev.target.value); }, disabled: !warmupType }))
+        ),
+        warmupType && warmupHr ? e('div', { className: 'mt-2' }, e(HRZoneBadge, { hr: num(warmupHr) })) : null
+      ),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Gem. hartslag training (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+        e(Field, { label: 'Duur training (min, zonder WU)' }, e(TextInput, { type: 'number', value: krachtDurationMinutes, onChange: function (ev) { setKrachtDurationMinutes(ev.target.value); } }))
+      ),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      e(Field, { label: 'Notitie / gevoel (algemeen)' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
+    ) : isHyrox ? e('div', { className: 'flex flex-col gap-3' },
+      e('p', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, 'Dit wordt ook opgeslagen bij Hyrox.'),
+      e(Field, { label: 'Workout' }, e('select', { value: hyroxWorkoutId, onChange: function (ev) { setHyroxWorkoutId(ev.target.value); } },
+        [e('option', { key: '', value: '' }, 'Kies een workout')].concat((props.hyroxLibrary || []).map(function (w) { return e('option', { key: w.id, value: w.id }, w.name); }))
+      )),
+      (function () { var w = (props.hyroxLibrary || []).find(function (x) { return x.id === hyroxWorkoutId; }); return w ? e(WorkoutBlocks, { blocks: w.blocks || [] }) : null; })(),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Tijd (mm:ss)' }, e(TextInput, { placeholder: '12:45', value: f.time, onChange: set('time') })),
+        e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') }))
+      ),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      e(Field, { label: 'Notitie' }, e(TextInput, { value: f.note, onChange: set('note') }))
+    ) : isBrick ? e('div', { className: 'flex flex-col gap-4' },
+      e('div', {},
+        e('div', { className: 'text-sm font-semibold mb-2' }, '🚴 Fiets'),
+        e('div', { className: 'grid grid-cols-3 gap-2' },
+          e(Field, { label: 'Km' }, e(TextInput, { type: 'number', value: f.bikeDistance, onChange: set('bikeDistance') })),
+          e(Field, { label: 'Tijd' }, e(TextInput, { placeholder: 'hh:mm:ss', value: f.bikeTime, onChange: set('bikeTime') })),
+          e(Field, { label: 'HR' }, e(TextInput, { type: 'number', value: f.bikeHr, onChange: set('bikeHr') }))
+        )
+      ),
+      e('div', {},
+        e('div', { className: 'text-sm font-semibold mb-2' }, '🏃 Loop'),
+        e('div', { className: 'grid grid-cols-3 gap-2' },
+          e(Field, { label: 'Km' }, e(TextInput, { type: 'number', value: f.runDistance, onChange: set('runDistance') })),
+          e(Field, { label: 'Tijd' }, e(TextInput, { placeholder: 'hh:mm:ss', value: f.runTime, onChange: set('runTime') })),
+          e(Field, { label: 'HR' }, e(TextInput, { type: 'number', value: f.runHr, onChange: set('runHr') }))
+        )
+      ),
+      e(Field, { label: 'Notitie / gevoel' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
+    ) : isZwemmen ? e('div', { className: 'flex flex-col gap-3' },
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Totale afstand (m)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
+        e(Field, { label: 'Totale tijd (mm:ss)' }, e(TextInput, { placeholder: '32:00', value: f.time, onChange: set('time') }))
+      ),
+      e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      e(Field, { label: 'Notitie / intervalset' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') })),
+      preview ? e(Badge, { tone: 'sage' }, preview) : null
+    ) : isWielrennen ? e('div', { className: 'flex flex-col gap-3' },
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Afstand (km)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
+        e(Field, { label: 'Tijd (hh:mm)' }, e(TextInput, { placeholder: '1:15', value: f.time, onChange: set('time') }))
+      ),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Gem. vermogen (W)' }, e(TextInput, { type: 'number', value: f.power, onChange: set('power') })),
+        e(Field, { label: 'Gem. cadans (RPM)' }, e(TextInput, { type: 'number', value: f.cadence, onChange: set('cadence') }))
+      ),
+      e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      e(Field, { label: 'Type rit' }, e('select', { value: f.rideType, onChange: set('rideType') }, ['binnen', 'buiten'].map(function (x) { return e('option', { key: x, value: x }, x); }))),
+      e(Field, { label: 'Notitie' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') })),
+      preview ? e(Badge, { tone: 'sage' }, preview) : null
+    ) : isHardlopen ? e('div', { className: 'flex flex-col gap-3' },
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Afstand (km)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
+        e(Field, { label: 'Tijd (hh:mm:ss)' }, e(TextInput, { placeholder: '0:45:00', value: f.time, onChange: set('time') }))
+      ),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Gem. hartslag' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') })),
+        e(Field, { label: 'Type run' }, e('select', { value: f.runType, onChange: set('runType') }, ['tempo', 'interval', 'long run', 'herstel'].map(function (x) { return e('option', { key: x, value: x }, x); })))
+      ),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      askGels ? e(Field, { label: 'Aantal gels genomen' }, e(TextInput, { type: 'number', placeholder: 'bv. 3', value: f.gels, onChange: set('gels') })) : null,
+      e(Field, { label: 'Notitie / gevoel' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') })),
+      preview ? e(Badge, { tone: 'sage' }, preview) : null
+    ) : e('div', { className: 'flex flex-col gap-3' },
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Afstand (km)' }, e(TextInput, { type: 'number', value: f.distance, onChange: set('distance') })),
+        e(Field, { label: 'Tijd (hh:mm:ss)' }, e(TextInput, { placeholder: 'optioneel', value: f.time, onChange: set('time') }))
+      ),
+      e('div', { className: 'grid grid-cols-2 gap-3' },
+        e(Field, { label: 'Tempo (min/km)' }, e(TextInput, { placeholder: 'bv. 5:20', value: f.pace, onChange: set('pace') })),
+        e(Field, { label: 'Gem. hartslag (bpm)' }, e(TextInput, { type: 'number', value: f.hr, onChange: set('hr') }))
+      ),
+      f.hr ? e(HRZoneBadge, { hr: num(f.hr) }) : null,
+      e(Field, { label: 'Notitie / gevoel' }, e('textarea', { rows: 2, value: f.note, onChange: set('note') }))
+    ),
+    e('div', { className: 'flex gap-2 mt-4' },
+      e(Button, { onClick: save, className: 'flex-1' }, 'Markeer als uitgevoerd'),
+      entry.completed ? e(ConfirmInline, { label: 'Verwijder log', onConfirm: function () { props.onUncomplete(entry.id); props.onClose(); } }) : null
+    )
+  );
+}
+
+export function WeekBlock(props) {
+  var days = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return addDays(props.monday, i); });
+  var rows = [];
+  days.forEach(function (dateIso) {
+    var dayEntries = props.entries.filter(function (x) { return x.date === dateIso; });
+    var count = Math.max(dayEntries.length, 1);
+    for (var i = 0; i < count; i++) { rows.push({ dateIso: dateIso, isFirst: i === 0, rowSpan: count, entry: dayEntries[i] || null }); }
+  });
+  var isCurrentWeek = props.monday === getMonday(todayISO());
+  var raceByDate = {};
+  (props.races || []).forEach(function (r) { raceByDate[r.date] = r; });
+  return e('div', { className: 'rounded-2xl overflow-hidden mb-4', style: { border: '1px solid var(--border-soft)' } },
+    e('div', { className: 'px-3.5 py-2.5 flex items-center justify-between', style: { background: isCurrentWeek ? 'var(--sage-bg)' : 'var(--bg-elevated)' } },
+      e('span', { className: 'text-sm font-semibold', style: isCurrentWeek ? { color: 'var(--sage-strong)' } : {} }, props.weekLabel),
+      e('span', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateShort(props.monday) + '–' + formatDateShort(addDays(props.monday, 6)))
+    ),
+    e('table', { className: 'w-full text-sm' },
+      e('tbody', {}, rows.map(function (r, idx) {
+        var isToday = r.dateIso === todayISO();
+        var dayRace = raceByDate[r.dateIso] || null;
+        return e('tr', { key: idx, style: { borderTop: idx > 0 ? '1px solid var(--border-soft)' : 'none', background: isToday ? 'var(--sage-bg)' : 'transparent', cursor: 'pointer' },
+          onClick: function () { if (r.entry) props.onOpenEntry(r.entry); else props.onAddFor(r.dateIso); } },
+          r.isFirst ? e('td', { rowSpan: r.rowSpan, className: 'px-3.5 py-2.5 align-top text-xs font-medium leading-tight', style: { color: isToday ? 'var(--sage-strong)' : 'var(--text-secondary)', width: '96px' } },
+            e('div', { className: 'flex items-start gap-1.5' },
+              e('span', {}, WEEKDAYS_FULL[toDate(r.dateIso).getDay()].charAt(0).toUpperCase() + WEEKDAYS_FULL[toDate(r.dateIso).getDay()].slice(1) + ' ' + toDate(r.dateIso).getDate()),
+              e('button', { onClick: function (ev) { ev.stopPropagation(); props.onAddFor(r.dateIso); }, style: { color: 'var(--slate)' }, className: 'text-sm leading-none' }, '+')
+            ),
+            dayRace ? e('div', { className: 'mt-1' }, e(Badge, { tone: 'amber' }, '🏁 wedstrijd')) : null
+          ) : null,
+          e('td', { className: 'px-3.5 py-2.5' },
+            r.entry ? e('div', { className: 'flex items-center gap-2' },
+              e('span', {}, SPORT_ICON[r.entry.sport] || '•'),
+              e('span', { className: 'flex-1' }, (dayRace ? '🏁 ' : '') + r.entry.type + (r.entry.plannedText && r.entry.plannedText !== r.entry.type ? (': ' + r.entry.plannedText) : '')),
+              r.entry.completed ? e('span', { className: 'w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0', style: { background: 'var(--sage)', color: '#12180F' } }, '✓') : null
+            ) : (dayRace ? e('span', { className: 'font-medium' }, '🏁 ' + dayRace.name) : e('span', { style: { color: 'var(--text-tertiary)' } }, 'Rust'))
+          )
+        );
+      }))
+    )
+  );
+}

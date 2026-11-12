@@ -1,6 +1,6 @@
 /* ---------------- Marathon (onder Doelen) ----------------
    Overzicht van het marathonschema, rechtstreeks uit schedule_entries. Er
-   wordt niets gekopieerd: pas je een run aan in Schema, dan zie je dat hier
+   wordt niets gekopieerd: pas je een run aan in Schema, dan zie je dat hier 
    meteen terug.
 
    - Het doel is de eerstvolgende race met type "Marathon" (tabel races).

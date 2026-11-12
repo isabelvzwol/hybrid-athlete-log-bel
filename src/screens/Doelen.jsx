@@ -89,9 +89,19 @@ function MealDayCard(props) {
     ) : null
   );
 }
+/* De doeltijd wordt bewaard in het veld result (jsonb) als goalTime, naast
+   de echte eindtijd en evaluatie. Zo is er geen databasewijziging nodig. */
 function RaceForm(props) {
-  var init = props.initial || { name: '', date: '', type: '', targetPace: '', pacingNotes: '', carbNotes: '' };
+  var base = props.initial || { name: '', date: '', type: '', targetPace: '', pacingNotes: '', carbNotes: '' };
+  var init = Object.assign({}, base, { goalTime: (base.result && base.result.goalTime) || '' });
   var st = useState(init); var f = st[0], setF = st[1];
+  function save() {
+    if (!f.name || !f.date) return;
+    var out = Object.assign({}, f);
+    delete out.goalTime;
+    out.result = Object.assign({}, base.result || {}, { goalTime: f.goalTime || null });
+    props.onSave(out);
+  }
   function set(k) { return function (ev) { var v = ev.target.value; setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }; }
   return e('div', { className: 'flex flex-col gap-3' },
     e(Field, { label: 'Naam' }, e(TextInput, { value: f.name, onChange: set('name'), placeholder: 'bv. Halve Marathon Malaga' })),
@@ -99,10 +109,13 @@ function RaceForm(props) {
       e(Field, { label: 'Datum' }, e(TextInput, { type: 'date', value: f.date, onChange: set('date') })),
       e(Field, { label: 'Type event' }, e(TextInput, { value: f.type, onChange: set('type'), placeholder: 'bv. halve marathon' }))
     ),
-    e(Field, { label: 'Target pace' }, e(TextInput, { value: f.targetPace, onChange: set('targetPace'), placeholder: 'bv. 4:40/km' })),
+    e('div', { className: 'grid grid-cols-2 gap-3' },
+      e(Field, { label: 'Doeltijd' }, e(TextInput, { value: f.goalTime, onChange: set('goalTime'), placeholder: 'bv. 3:45:00' })),
+      e(Field, { label: 'Target pace' }, e(TextInput, { value: f.targetPace, onChange: set('targetPace'), placeholder: 'bv. 4:40/km' }))
+    ),
     e(Field, { label: 'Pacing-schema (notities)' }, e('textarea', { rows: 3, value: f.pacingNotes, onChange: set('pacingNotes'), placeholder: 'Vrije notities over je pacing-aanpak' })),
     e(Field, { label: 'Overige notities (optioneel)' }, e('textarea', { rows: 3, value: f.carbNotes, onChange: set('carbNotes'), placeholder: 'bv. bietensapprotocol, hydratatie-tips — losse maaltijden voeg je toe in het wedstrijdscherm' })),
-    e(Button, { onClick: function () { if (!f.name || !f.date) return; props.onSave(f); }, className: 'w-full mt-1' }, props.saveLabel || 'Wedstrijd opslaan')
+    e(Button, { onClick: save, className: 'w-full mt-1' }, props.saveLabel || 'Wedstrijd opslaan')
   );
 }
 export function RaceModal(props) {
@@ -127,6 +140,7 @@ export function RaceModal(props) {
     e('div', { className: 'flex items-center gap-2 mb-4 flex-wrap' },
       e(Badge, { tone: 'slate' }, race.type || 'wedstrijd'),
       e(Badge, { tone: 'amber' }, formatDateLong(race.date)),
+      race.result && race.result.goalTime ? e(Badge, { tone: 'sage' }, 'doel: ' + race.result.goalTime) : null,
       race.targetPace ? e(Badge, { tone: 'sage' }, 'target: ' + race.targetPace) : null
     ),
     linkedEntries.length ? e('div', { className: 'mb-4' },

@@ -1,8 +1,8 @@
 /* ---------------- Home-tab ----------------
    Oorspronkelijk 1-op-1 overgenomen uit de originele hybrid-athlete-app.html.
-   Wedstrijden staan nu onder Doelen -> Races. Bovenaan staat een aftelling
-   naar je marathon (tik erop voor het overzicht onder Doelen). Klachten en
-   gewicht zitten achter het kleine blok Gezondheid. */
+   Volgorde: vandaag op de planning, stemming, alle aankomende races (tik
+   voor details; beheer en geschiedenis staan onder Doelen -> Races). Daarna
+   klachten en gewicht (klein blok), de weekstand en km per week. */
 import React, { useState } from 'react';
 import { Card, Modal } from '../components/ui.jsx';
 import { SimpleBarChart } from '../components/charts.jsx';
@@ -10,23 +10,27 @@ import { DayCard, RestDayCard, LogTrainingModal, AddScheduleEntryModal } from '.
 import { enduranceArchiveItems } from '../lib/domain.js';
 import { todayISO, daysBetween, addDays, getMonday, isoWeekNumber, formatDateShort, formatDateLong, toDate, WEEKDAYS_FULL } from '../lib/helpers.js';
 import { findGoalRace } from './Marathon.jsx';
+import { RaceCard, RaceModal } from './Doelen.jsx';
 import { GezondheidTab } from './Gezondheid.jsx';
 var e = React.createElement;
 
-function GoalCountdown(props) {
+function UpcomingRaces(props) {
   var goal = findGoalRace(props.races);
-  if (!goal) return null;
-  var d = daysBetween(todayISO(), goal.date);
-  if (d < 0) return null;
-  return e(Card, { onClick: props.onOpen, className: 'p-4 cursor-pointer flex items-center justify-between gap-3' },
-    e('div', { className: 'min-w-0' },
-      e('div', { className: 'text-sm font-semibold truncate' }, '🏁 ' + goal.name),
-      e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, formatDateLong(goal.date) + (goal.targetPace ? ' · doel ' + goal.targetPace + '/km' : ''))
+  var upcoming = (props.races || []).filter(function (r) { return r.date >= todayISO(); }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+  return e('div', {},
+    e('div', { className: 'flex items-center justify-between mb-2' },
+      e('span', { className: 'text-sm font-semibold' }, 'Wedstrijden'),
+      e('button', { onClick: props.onManage, className: 'text-xs font-medium', style: { color: 'var(--slate)' } }, 'Beheren ▸')
     ),
-    e('div', { className: 'text-right shrink-0' },
-      e('div', { className: 'font-display text-2xl font-semibold', style: { color: 'var(--sage-strong)' } }, d === 0 ? 'Vandaag!' : d),
-      d === 0 ? null : e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, d === 1 ? 'dag' : 'dagen')
-    )
+    upcoming.length ? e('div', { className: 'flex flex-col gap-2' },
+      upcoming.map(function (r) {
+        var isGoal = goal && goal.id === r.id;
+        return e(RaceCard, { key: r.id, race: isGoal ? Object.assign({}, r, { name: '🏁 ' + r.name }) : r,
+          onOpen: function () { props.onOpenRace(r, false); },
+          onEdit: function () { props.onOpenRace(r, true); },
+          onDelete: function () { props.onDeleteRace(r.id); } });
+      })
+    ) : e('p', { className: 'text-sm', style: { color: 'var(--text-tertiary)' } }, 'Geen aankomende wedstrijden.')
   );
 }
 function HealthMini(props) {
@@ -126,10 +130,12 @@ export function Home(props) {
   var st3 = useState(null); var logEntry = st3[0], setLogEntry = st3[1];
   var st4 = useState(false); var addToday = st4[0], setAddToday = st4[1];
   var st5 = useState(false); var healthOpen = st5[0], setHealthOpen = st5[1];
+  var st6 = useState(null); var raceModalId = st6[0], setRaceModalId = st6[1];
+  var st7 = useState(false); var raceEditMode = st7[0], setRaceEditMode = st7[1];
+  var raceModal = raceModalId ? s.races.find(function (r) { return r.id === raceModalId; }) : null;
 
   return e('div', { className: 'flex flex-col gap-5' },
     e('div', { className: 'text-xs', style: { color: 'var(--text-tertiary)' } }, WEEKDAYS_FULL[new Date().getDay()].charAt(0).toUpperCase() + WEEKDAYS_FULL[new Date().getDay()].slice(1) + ', ' + formatDateShort(todayISO())),
-    e(GoalCountdown, { races: s.races, onOpen: function () { props.onOpenMarathon(); } }),
     e('div', {},
       e('div', { className: 'flex items-center justify-between mb-2' },
         e('span', { className: 'text-sm font-semibold' }, 'Vandaag op de planning'),
@@ -139,10 +145,16 @@ export function Home(props) {
         e(RestDayCard, { onAdd: function () { setAddToday(true); } })
     ),
     e(MoodTracker, { moodLogs: s.moodLogs, onSetMood: props.setMood }),
+    e(UpcomingRaces, { races: s.races, onManage: props.onOpenRaces,
+      onOpenRace: function (r, edit) { setRaceModalId(r.id); setRaceEditMode(!!edit); },
+      onDeleteRace: props.deleteRace }),
     e(HealthMini, { complaintLogs: s.complaintLogs, onOpen: function () { setHealthOpen(true); } }),
     e(Trends, { entries: s.scheduleEntries }),
     e(WeeklyVolumeChart, { state: s }),
     e('button', { onClick: function () { props.onOpenRecap(); }, className: 'text-xs font-medium text-center', style: { color: 'var(--slate)' } }, '📊 Jaaroverzicht bekijken'),
+    raceModal ? e(RaceModal, { key: raceModal.id + (raceEditMode ? '-edit' : ''), race: raceModal, startEditing: raceEditMode, scheduleEntries: s.scheduleEntries,
+      onClose: function () { setRaceModalId(null); setRaceEditMode(false); },
+      onUpdate: function (r) { props.updateRace(r); }, onDelete: props.deleteRace }) : null,
     healthOpen ? e(Modal, { title: 'Klachten & gewicht', onClose: function () { setHealthOpen(false); } },
       e(GezondheidTab, { state: s, addComplaint: props.addComplaint, deleteComplaint: props.deleteComplaint, saveBodyWeight: props.saveBodyWeight, deleteBodyWeight: props.deleteBodyWeight })) : null,
     logEntry ? e(LogTrainingModal, { entry: logEntry, onClose: function () { setLogEntry(null); },

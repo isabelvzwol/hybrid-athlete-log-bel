@@ -8,11 +8,12 @@
      laatste week de raceweek is.
    - Alleen hardloopruns tellen mee, plus het looponderdeel van een Brick.
    - "Gedaan" telt alleen de afstand die je echt hebt gelogd bij afronden.
-   - Voorspelde eindtijd: hartslagmethode. Van je gelijkmatige runs uit de
+   - Voorspelde eindtijd: hartslagmethode. Van je runs uit de
      laatste 8 weken bepalen we het verband tussen hartslag en tempo (een
      rechte lijn). Daaruit volgt het tempo op marathonhartslag (MARATHON_HR,
-     met een kleine marge HR_BAND erboven en eronder). Intervallen en runs
-     met een tempoblok of warming-up tellen niet mee.
+     met een kleine marge HR_BAND erboven en eronder). Wedstrijden tellen
+     altijd mee; trainingen alleen als ze gelijkmatig zijn. Een run kun je
+     uitsluiten met het vinkje "Niet meetellen voor de voorspelling".
    - De doeltijd staat bij de race (Doelen -> Races -> Bewerken). */
 import React, { useState } from 'react';
 import { Card, Badge } from '../components/ui.jsx';
@@ -69,12 +70,17 @@ function phaseOf(label) {
   return m ? m[1] : 'Opbouw';
 }
 
-/* Is dit een gelijkmatige run? Intervallen, progressieve runs en runs met
-   een warming-up of een tweede tempoblok hebben een gemiddelde dat een mix
-   is van rustig en snel, en die laten we weg. Een wedstrijd op een vast
-   tempo telt wel mee: de spanning duwt de hartslag iets omhoog, wat de
-   voorspelling iets voorzichtiger maakt. */
-function isSteadyRun(x) {
+/* Telt deze run mee voor de voorspelling?
+   - Niet als je bij het afronden "Niet meetellen voor de voorspelling" hebt
+     aangevinkt (bv. strand, heuvels, hitte).
+   - Wedstrijden tellen altijd mee, ook als je ze deels rustig en deels op
+     tempo loopt: in Rotterdam heb je ook wedstrijdspanning.
+   - Gewone trainingen alleen als ze gelijkmatig zijn. Intervallen,
+     progressieve runs en runs met een warming-up of een tweede tempoblok
+     hebben een gemiddelde dat een mix is van rustig en snel. */
+function countsForPrediction(x, raceDates) {
+  if (x.actual && x.actual.excludeFromPrediction) return false;
+  if (raceDates[x.date] || x.type === 'Race day') return true;
   var txt = ((x.type || '') + ' ' + (x.plannedText || '')).toLowerCase();
   if (/interval|progressie|progressief|shake|\bwu\b|\bcd\b|warming|\d\s*x\s*\d/.test(txt)) return false;
   if ((txt.match(/@/g) || []).length >= 2) return false;
@@ -86,6 +92,8 @@ function isSteadyRun(x) {
    marathonhartslag. */
 function hrPrediction(state) {
   var since = addDays(todayISO(), -WINDOW_DAYS);
+  var raceDates = {};
+  (state.races || []).forEach(function (r) { raceDates[r.date] = true; });
   var pts = [];
   (state.scheduleEntries || []).forEach(function (x) {
     if (x.sport !== 'Hardlopen' || !x.completed || !x.actual || x.date < since || x.date > todayISO()) return;
@@ -93,7 +101,7 @@ function hrPrediction(state) {
     var hr = Number(a.hr), km = Number(a.distance), sec = parseDuration(a.time);
     var pace = parseDuration(a.pace) || (sec && km ? sec / km : null);
     if (!(hr >= 110 && hr <= 190) || !(km >= 3) || !pace) return;
-    if (!isSteadyRun(x)) return;
+    if (!countsForPrediction(x, raceDates)) return;
     pts.push({ hr: hr, pace: pace, date: x.date });
   });
   var n = pts.length;
@@ -342,7 +350,7 @@ export function MarathonView(props) {
             'Op HR ' + MARATHON_HR + ' loop je ongeveer ' + formatDuration(pred.pace) + '/km (HR ' + (MARATHON_HR - HR_BAND) + ' tot ' + (MARATHON_HR + HR_BAND) + ': ' + formatDuration(pred.slow) + ' tot ' + formatDuration(pred.fast) + '/km).' + (diffLabel(pred.time) ? ' Dat is ' + diffLabel(pred.time) + '.' : '')),
           e(HrPaceChart, { pred: pred }),
           e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } },
-            'Op basis van ' + pred.n + ' gelijkmatige runs uit de laatste 8 weken (hartslag ' + pred.minHr + ' tot ' + pred.maxHr + '). Intervallen en runs met een tempoblok tellen niet mee. ' +
+            'Op basis van ' + pred.n + ' runs uit de laatste 8 weken (hartslag ' + pred.minHr + ' tot ' + pred.maxHr + '). Wedstrijden tellen altijd mee; intervallen, trainingen met een tempoblok en runs met het vinkje "niet meetellen" niet. ' +
             (pred.extrapolated ? 'Let op: je hebt nog geen gelijkmatige runs rond HR ' + MARATHON_HR + ', dus dit is doorgetrokken. ' : '') +
             'In een marathon stijgt je hartslag geleidelijk bij hetzelfde tempo, dus zie dit als de snelle kant van wat haalbaar is.')
         ) : e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } },

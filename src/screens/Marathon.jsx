@@ -90,13 +90,14 @@ function countsForPrediction(x, raceDates) {
 /* Hartslagmethode: rechte lijn door (hartslag, tempo) van je gelijkmatige
    runs uit de laatste WINDOW_DAYS dagen, en daarmee het tempo op
    marathonhartslag. */
-function hrPrediction(state) {
-  var since = addDays(todayISO(), -WINDOW_DAYS);
+function hrPrediction(state, refDate) {
+  var until = refDate || todayISO();
+  var since = addDays(until, -WINDOW_DAYS);
   var raceDates = {};
   (state.races || []).forEach(function (r) { raceDates[r.date] = true; });
   var pts = [];
   (state.scheduleEntries || []).forEach(function (x) {
-    if (x.sport !== 'Hardlopen' || !x.completed || !x.actual || x.date < since || x.date > todayISO()) return;
+    if (x.sport !== 'Hardlopen' || !x.completed || !x.actual || x.date < since || x.date > until) return;
     var a = x.actual;
     var hr = Number(a.hr), km = Number(a.distance), sec = parseDuration(a.time);
     var pace = parseDuration(a.pace) || (sec && km ? sec / km : null);
@@ -123,26 +124,51 @@ function hrPrediction(state) {
   };
 }
 
-/* Puntenwolk hartslag tegen tempo, met de lijn en de marathonhartslag. */
-function HrPaceChart(props) {
-  var p = props.pred;
-  var w = 300, h = 140, pad = 22;
-  var hrs = p.pts.map(function (x) { return x.hr; }).concat([MARATHON_HR + HR_BAND, MARATHON_HR - HR_BAND]);
-  var paces = p.pts.map(function (x) { return x.pace; }).concat([p.fast, p.slow]);
-  var x0 = Math.min.apply(null, hrs) - 3, x1 = Math.max.apply(null, hrs) + 3;
-  var y0 = Math.min.apply(null, paces) - 10, y1 = Math.max.apply(null, paces) + 10;
-  function X(v) { return pad + (v - x0) / (x1 - x0) * (w - pad - 6); }
-  function Y(v) { return 6 + (v - y0) / (y1 - y0) * (h - pad - 6); }
-  return e('svg', { viewBox: '0 0 ' + w + ' ' + h, style: { width: '100%', height: h + 'px' } },
-    e('rect', { x: X(MARATHON_HR - HR_BAND), y: 6, width: X(MARATHON_HR + HR_BAND) - X(MARATHON_HR - HR_BAND), height: h - pad - 6, fill: 'var(--amber-bg)' }),
-    e('line', { x1: X(x0), y1: Y(p.icept + p.slope * x0), x2: X(x1), y2: Y(p.icept + p.slope * x1), stroke: 'var(--slate)', strokeWidth: 1.5 }),
-    p.pts.map(function (pt, i) { return e('circle', { key: i, cx: X(pt.hr), cy: Y(pt.pace), r: 3, fill: 'var(--sage)' }); }),
-    e('circle', { cx: X(MARATHON_HR), cy: Y(p.pace), r: 4, fill: 'var(--amber)' }),
-    e('text', { x: X(MARATHON_HR), y: h - 6, fontSize: '8', textAnchor: 'middle', fill: 'var(--text-tertiary)' }, 'HR ' + MARATHON_HR),
-    e('text', { x: pad, y: h - 6, fontSize: '8', fill: 'var(--text-tertiary)' }, 'HR ' + Math.round(x0)),
-    e('text', { x: w - 4, y: h - 6, fontSize: '8', textAnchor: 'end', fill: 'var(--text-tertiary)' }, 'HR ' + Math.round(x1)),
-    e('text', { x: 2, y: 12, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y0)),
-    e('text', { x: 2, y: h - pad, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y1))
+/* Verloop van de voorspelling: per week (op zondag) de voorspelling met de
+   runs van de 8 weken daarvoor. Weken met te weinig bruikbare runs vallen
+   weg. Begint TREND_WEEKS weken terug. */
+var TREND_WEEKS = 16;
+function predictionTrend(state) {
+  var lastSunday = addDays(getMonday(todayISO()), 6);
+  var out = [];
+  for (var i = TREND_WEEKS - 1; i >= 0; i--) {
+    var sunday = addDays(lastSunday, -7 * i);
+    var ref = sunday > todayISO() ? todayISO() : sunday;
+    var p = hrPrediction(state, ref);
+    if (!p.ok) continue;
+    var monday = addDays(sunday, -6);
+    var race = (state.races || []).some(function (r) { return r.date >= monday && r.date <= sunday && r.date <= todayISO(); });
+    out.push({ date: ref, time: p.time, race: race });
+  }
+  return out;
+}
+
+function PredictionTrendChart(props) {
+  var pts = props.points, goalSec = props.goalSec;
+  if (pts.length < 2) return e('p', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Het verloop verschijnt zodra er twee weken met een voorspelling zijn.');
+  var w = 300, h = 130, padL = 34, padB = 16, padT = 10;
+  var vals = pts.map(function (p) { return p.time; }).concat(goalSec ? [goalSec] : []);
+  var y0 = Math.min.apply(null, vals) - 120, y1 = Math.max.apply(null, vals) + 120;
+  function X(i) { return padL + i / (pts.length - 1) * (w - padL - 8); }
+  function Y(v) { return padT + (y1 - v) / (y1 - y0) * (h - padT - padB); }
+  var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.time).toFixed(1); }).join(' ');
+  return e('div', {},
+    e('svg', { viewBox: '0 0 ' + w + ' ' + h, style: { width: '100%', height: h + 'px' } },
+      goalSec ? e('line', { x1: padL, x2: w - 8, y1: Y(goalSec), y2: Y(goalSec), stroke: 'var(--amber)', strokeWidth: 1, strokeDasharray: '4 3' }) : null,
+      goalSec ? e('text', { x: w - 8, y: Y(goalSec) - 3, fontSize: '8', textAnchor: 'end', fill: 'var(--amber)' }, 'doel ' + formatDuration(goalSec, true)) : null,
+      e('text', { x: 2, y: Y(y1 - 120) + 3, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y1 - 120, true)),
+      e('text', { x: 2, y: Y(y0 + 120) + 3, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDuration(y0 + 120, true)),
+      e('path', { d: path, fill: 'none', stroke: 'var(--sage)', strokeWidth: 2 }),
+      pts.map(function (p, i) {
+        return e('g', { key: i },
+          e('circle', { cx: X(i), cy: Y(p.time), r: i === pts.length - 1 ? 4 : 2.5, fill: i === pts.length - 1 ? 'var(--sage-strong)' : 'var(--sage)' }),
+          p.race ? e('text', { x: X(i), y: Y(p.time) - 6, fontSize: '8', textAnchor: 'middle' }, '🏁') : null
+        );
+      }),
+      e('text', { x: padL, y: h - 3, fontSize: '8', fill: 'var(--text-tertiary)' }, formatDateShort(pts[0].date)),
+      e('text', { x: w - 8, y: h - 3, fontSize: '8', textAnchor: 'end', fill: 'var(--text-tertiary)' }, 'nu')
+    ),
+    e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Lager is sneller. Elk punt is je vorm van die week (runs van de 8 weken ervoor). Kijk naar de richting over een paar weken, niet naar één punt.')
   );
 }
 
@@ -306,6 +332,7 @@ export function MarathonView(props) {
   var goalTime = goal.result && goal.result.goalTime ? goal.result.goalTime : null;
   var goalSec = parseDuration(goalTime);
   var pred = hrPrediction(s);
+  var trend = predictionTrend(s);
   var phase = current ? phaseOf(current.label) : (todayISO() < weeks[0].monday ? 'Nog niet begonnen' : 'Afgerond');
   var longPoints = weeks.map(function (w) { return { label: 'wk ' + (w.index + 1), value: w.longestPlanned }; });
   var openEntry = openEntryId ? s.scheduleEntries.find(function (x) { return x.id === openEntryId; }) : null;
@@ -335,7 +362,7 @@ export function MarathonView(props) {
           e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, goalSec ? formatDuration(goalSec / MARATHON_KM) + '/km' + (goal.targetPace ? ' · racetempo ' + goal.targetPace : '') : 'vul in bij Races → Bewerken')
         ),
         e('div', { className: 'rounded-xl p-3', style: { background: 'var(--bg-inset)' } },
-          e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Voorspelling'),
+          e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, 'Voorspelling, vorm nu'),
           e('div', { className: 'font-display text-lg font-semibold', style: { color: pred.ok && goalSec && pred.time > goalSec ? 'var(--amber)' : 'var(--sage-strong)' } }, pred.ok ? formatDuration(pred.time, true) : '—'),
           e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } }, pred.ok ? formatDuration(pred.timeFast, true) + ' tot ' + formatDuration(pred.timeSlow, true) : 'nog te weinig runs')
         )
@@ -347,8 +374,8 @@ export function MarathonView(props) {
       e('div', { className: 'mt-3 pt-3', style: { borderTop: '1px solid var(--border-soft)' } },
         pred.ok ? e('div', { className: 'flex flex-col gap-1' },
           e('div', { className: 'text-xs', style: { color: 'var(--text-secondary)' } },
-            'Op HR ' + MARATHON_HR + ' loop je ongeveer ' + formatDuration(pred.pace) + '/km (HR ' + (MARATHON_HR - HR_BAND) + ' tot ' + (MARATHON_HR + HR_BAND) + ': ' + formatDuration(pred.slow) + ' tot ' + formatDuration(pred.fast) + '/km).' + (diffLabel(pred.time) ? ' Dat is ' + diffLabel(pred.time) + '.' : '')),
-          e(HrPaceChart, { pred: pred }),
+            'Op basis van je vorm nu. Op HR ' + MARATHON_HR + ' loop je ongeveer ' + formatDuration(pred.pace) + '/km (HR ' + (MARATHON_HR - HR_BAND) + ' tot ' + (MARATHON_HR + HR_BAND) + ': ' + formatDuration(pred.slow) + ' tot ' + formatDuration(pred.fast) + '/km).' + (diffLabel(pred.time) ? ' Dat is ' + diffLabel(pred.time) + '.' : '')),
+          e(PredictionTrendChart, { points: trend, goalSec: goalSec }),
           e('div', { className: 'text-[11px]', style: { color: 'var(--text-tertiary)' } },
             'Op basis van ' + pred.n + ' runs uit de laatste 8 weken (hartslag ' + pred.minHr + ' tot ' + pred.maxHr + '). Wedstrijden tellen altijd mee; intervallen, trainingen met een tempoblok en runs met het vinkje "niet meetellen" niet. ' +
             (pred.extrapolated ? 'Let op: je hebt nog geen gelijkmatige runs rond HR ' + MARATHON_HR + ', dus dit is doorgetrokken. ' : '') +
